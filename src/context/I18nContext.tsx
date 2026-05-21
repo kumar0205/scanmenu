@@ -1,0 +1,438 @@
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+
+type Language = 'en' | 'te' | 'hi';
+
+const translations = {
+  en: {
+    // Navigation
+    'nav.dashboard': 'Dashboard',
+    'nav.menu': 'Menu',
+    'nav.orders': 'Orders',
+    'nav.tables': 'Tables',
+    'nav.ratings': 'Ratings',
+    'nav.analytics': 'Analytics',
+    'nav.subscription': 'Subscription',
+    'nav.settings': 'Settings',
+    'nav.signOut': 'Sign Out',
+    
+    // Dashboard
+    'dashboard.greeting': 'Here\'s what\'s happening today.',
+    'dashboard.copyLink': 'Copy Link',
+    'dashboard.viewMenu': 'View Menu',
+    'dashboard.todayOrders': 'Today\'s Orders',
+    'dashboard.todayRevenue': 'Today\'s Revenue',
+    'dashboard.menuItems': 'Menu Items',
+    'dashboard.activeTables': 'Active Tables',
+    'dashboard.tableOverview': 'Table Overview',
+    'dashboard.available': 'Available',
+    'dashboard.occupied': 'Occupied',
+    'dashboard.inactive': 'Inactive',
+    'dashboard.quickActions': 'Quick Actions',
+    'dashboard.manageMenu': 'Manage Menu',
+    'dashboard.manageMenuDesc': 'Add, edit, or remove menu items',
+    'dashboard.viewOrders': 'View Orders',
+    'dashboard.viewOrdersDesc': 'See incoming orders in real-time',
+    'dashboard.qrCodes': 'QR Codes',
+    'dashboard.qrCodesDesc': 'Generate QR codes for your tables',
+    'dashboard.recentOrders': 'Recent Orders',
+    'dashboard.viewAll': 'View all',
+    'dashboard.noOrders': 'No orders yet. They\'ll appear here in real-time.',
+    
+    // Header
+    'header.title.dashboard': 'Dashboard',
+    'header.title.menu': 'Menu',
+    'header.title.orders': 'Orders',
+    'header.title.tables': 'Tables',
+    'header.title.ratings': 'Ratings',
+    'header.title.analytics': 'Analytics',
+    'header.title.subscription': 'Subscription',
+    'header.title.settings': 'Settings',
+    
+    // Generic
+    'generic.save': 'Save',
+    'generic.cancel': 'Cancel',
+    'generic.add': 'Add',
+    'generic.edit': 'Edit',
+    'generic.delete': 'Delete',
+    'generic.search': 'Search',
+    'generic.loading': 'Loading...',
+    'generic.success': 'Success',
+    'generic.error': 'Error',
+    'generic.copied': 'Link copied!',
+    'generic.signedOut': 'Signed out',
+    'generic.table': 'Table',
+    
+    // Menu
+    'menu.addCategory': 'Add Category',
+    'menu.addItem': 'Add Item',
+    'menu.noItems': 'No menu items found. Add some to get started.',
+    'menu.categoryName': 'Category Name',
+    'menu.itemName': 'Item Name',
+    'menu.price': 'Price',
+    'menu.description': 'Description',
+    'menu.isVeg': 'Vegetarian',
+    'menu.isAvailable': 'Available',
+    'menu.imageUrl': 'Image URL',
+    'menu.itemSaved': 'Item saved successfully',
+    'menu.itemDeleted': 'Item deleted',
+    
+    // Orders
+    'orders.status.pending': 'Pending',
+    'orders.status.accepted': 'Accepted',
+    'orders.status.preparing': 'Preparing',
+    'orders.status.ready': 'Ready',
+    'orders.status.completed': 'Completed',
+    'orders.status.cancelled': 'Cancelled',
+    'orders.noOrders': 'No orders found for this status.',
+    'orders.total': 'Total',
+    'orders.updateStatus': 'Update Status',
+    
+    // Tables
+    'tables.addTable': 'Add Table',
+    'tables.downloadQr': 'Download All QR Codes',
+    'tables.noTables': 'No tables configured yet.',
+    'tables.tableNumber': 'Table Number',
+    'tables.tableSaved': 'Table saved successfully',
+    'tables.tableDeleted': 'Table deleted',
+    
+    // Ratings
+    'ratings.average': 'Average Rating',
+    'ratings.total': 'Total Reviews',
+    'ratings.noRatings': 'No ratings received yet.',
+    'ratings.verified': 'Verified Customer',
+    
+    // Analytics
+    'analytics.revenue': 'Revenue',
+    'analytics.orders': 'Orders',
+    'analytics.topItems': 'Top Items',
+    'analytics.popularCategories': 'Popular Categories',
+    
+    // Settings
+    'settings.restaurantDetails': 'Restaurant Details',
+    'settings.restaurantInfo': 'Restaurant Info',
+    'settings.name': 'Restaurant Name',
+    'settings.phone': 'Phone Number',
+    'settings.address': 'Address',
+    'settings.currency': 'Currency Symbol',
+    'settings.upiId': 'UPI ID (for payments)',
+    'settings.saved': 'Settings saved successfully',
+    
+    // Subscription
+    'subscription.currentPlan': 'Current Plan',
+    'subscription.upgrade': 'Upgrade Plan',
+    'subscription.features': 'Features included:',
+    'subscription.free': 'Free',
+    'subscription.forever': 'forever',
+    'subscription.pro': 'Pro',
+    'subscription.perMonth': 'month',
+    'subscription.business': 'Business',
+    'subscription.upgradePrompt': 'Upgrade your plan to unlock premium features and grow your business.',
+    'subscription.thankYou': 'Thank you for supporting us!',
+    'subscription.mostPopular': 'Most Popular',
+    'subscription.faq': 'Frequently Asked Questions',
+    'subscription.upgradePlan': 'Upgrade Your Plan',
+    'subscription.contactPrompt': 'To upgrade to Pro or Business plan, please get in touch with our team via WhatsApp. We will set up your account instantly.',
+    'subscription.contactWa': 'Contact on WhatsApp',
+    'subscription.faq1.q': 'Can I change my plan later?',
+    'subscription.faq1.a': 'Yes, you can upgrade or downgrade your plan at any time. Simply contact us and we will adjust your subscription.',
+    'subscription.faq2.q': 'What payment options do you support?',
+    'subscription.faq2.a': 'We support all major payment methods including UPI, Credit/Debit cards, Net Banking, and digital wallets.',
+    'subscription.faq3.q': 'Is there a setup fee?',
+    'subscription.faq3.a': 'No, there are no hidden setup fees. You only pay the listed price for your chosen plan.',
+    'subscription.faq4.q': 'Can I cancel my subscription?',
+    'subscription.faq4.a': 'Yes, you can cancel your subscription at any time. Your plan will remain active until the end of the billing period.',
+  },
+  te: {
+    'nav.dashboard': 'డాష్‌బోర్డ్',
+    'nav.menu': 'మెనూ',
+    'nav.orders': 'ఆర్డర్లు',
+    'nav.tables': 'టేబుల్స్',
+    'nav.ratings': 'రేటింగ్స్',
+    'nav.analytics': 'విశ్లేషణలు',
+    'nav.subscription': 'చందా',
+    'nav.settings': 'సెట్టింగ్‌లు',
+    'nav.signOut': 'సైన్ అవుట్',
+    
+    'dashboard.greeting': 'ఈరోజు ఏమి జరుగుతోందో ఇక్కడ ఉంది.',
+    'dashboard.copyLink': 'లింక్ కాపీ చేయండి',
+    'dashboard.viewMenu': 'మెనూ చూడండి',
+    'dashboard.todayOrders': 'నేటి ఆర్డర్లు',
+    'dashboard.todayRevenue': 'నేటి ఆదాయం',
+    'dashboard.menuItems': 'మెనూ ఐటమ్స్',
+    'dashboard.activeTables': 'యాక్టివ్ టేబుల్స్',
+    'dashboard.tableOverview': 'టేబుల్స్ వివరాలు',
+    'dashboard.available': 'ఖాళీగా ఉంది',
+    'dashboard.occupied': 'నిండి ఉంది',
+    'dashboard.inactive': 'పనిచేయడం లేదు',
+    'dashboard.quickActions': 'క్విక్ యాక్షన్స్',
+    'dashboard.manageMenu': 'మెనూ నిర్వహించండి',
+    'dashboard.manageMenuDesc': 'మెనూ ఐటమ్స్ జోడించండి, సవరించండి లేదా తొలగించండి',
+    'dashboard.viewOrders': 'ఆర్డర్లు చూడండి',
+    'dashboard.viewOrdersDesc': 'నిజ సమయంలో వచ్చే ఆర్డర్లను చూడండి',
+    'dashboard.qrCodes': 'QR కోడ్లు',
+    'dashboard.qrCodesDesc': 'మీ టేబుల్స్ కోసం QR కోడ్లను రూపొందించండి',
+    'dashboard.recentOrders': 'ఇటీవలి ఆర్డర్లు',
+    'dashboard.viewAll': 'అన్నీ చూడండి',
+    'dashboard.noOrders': 'ఇంకా ఆర్డర్లు లేవు. అవి ఇక్కడ కనిపిస్తాయి.',
+    
+    'header.title.dashboard': 'డాష్‌బోర్డ్',
+    'header.title.menu': 'మెనూ నిర్వహణ',
+    'header.title.orders': 'ఆర్డర్లు',
+    'header.title.tables': 'టేబుల్స్ నిర్వహణ',
+    'header.title.ratings': 'రేటింగ్స్',
+    'header.title.analytics': 'విశ్లేషణలు',
+    'header.title.subscription': 'చందా',
+    'header.title.settings': 'సెట్టింగ్‌లు',
+    
+    'generic.save': 'సేవ్ చేయండి',
+    'generic.cancel': 'రద్దు చేయండి',
+    'generic.add': 'జోడించు',
+    'generic.edit': 'సవరించు',
+    'generic.delete': 'తొలగించు',
+    'generic.search': 'వెతకండి',
+    'generic.loading': 'లోడ్ అవుతోంది...',
+    'generic.success': 'విజయం',
+    'generic.error': 'లోపం',
+    'generic.copied': 'లింక్ కాపీ చేయబడింది!',
+    'generic.signedOut': 'సైన్ అవుట్ అయ్యారు',
+    'generic.table': 'టేబుల్',
+    
+    'menu.addCategory': 'వర్గాన్ని జోడించు',
+    'menu.addItem': 'ఐటమ్‌ను జోడించు',
+    'menu.noItems': 'మెనూ ఐటమ్స్ లేవు. ప్రారంభించడానికి కొన్నింటిని జోడించండి.',
+    'menu.categoryName': 'వర్గం పేరు',
+    'menu.itemName': 'ఐటమ్ పేరు',
+    'menu.price': 'ధర',
+    'menu.description': 'వివరణ',
+    'menu.isVeg': 'శాకాహారం',
+    'menu.isAvailable': 'అందుబాటులో ఉంది',
+    'menu.imageUrl': 'చిత్రం URL',
+    'menu.itemSaved': 'ఐటమ్ విజయవంతంగా సేవ్ చేయబడింది',
+    'menu.itemDeleted': 'ఐటమ్ తొలగించబడింది',
+    
+    'orders.status.pending': 'పెండింగ్‌లో ఉంది',
+    'orders.status.accepted': 'ఆమోదించబడింది',
+    'orders.status.preparing': 'తయారవుతోంది',
+    'orders.status.ready': 'సిద్ధంగా ఉంది',
+    'orders.status.completed': 'పూర్తయింది',
+    'orders.status.cancelled': 'రద్దు చేయబడింది',
+    'orders.noOrders': 'ఈ స్థితికి ఆర్డర్లు లేవు.',
+    'orders.total': 'మొత్తం',
+    'orders.updateStatus': 'స్థితిని నవీకరించండి',
+    
+    'tables.addTable': 'టేబుల్‌ను జోడించు',
+    'tables.downloadQr': 'అన్ని QR కోడ్‌లను డౌన్‌లోడ్ చేయండి',
+    'tables.noTables': 'ఇంకా టేబుల్స్ కాన్ఫిగర్ చేయబడలేదు.',
+    'tables.tableNumber': 'టేబుల్ సంఖ్య',
+    'tables.tableSaved': 'టేబుల్ విజయవంతంగా సేవ్ చేయబడింది',
+    'tables.tableDeleted': 'టేబుల్ తొలగించబడింది',
+    
+    'ratings.average': 'సగటు రేటింగ్',
+    'ratings.total': 'మొత్తం సమీక్షలు',
+    'ratings.noRatings': 'ఇంకా రేటింగ్స్ రాలేదు.',
+    'ratings.verified': 'ధృవీకరించబడిన కస్టమర్',
+    
+    'analytics.revenue': 'ఆదాయం',
+    'analytics.orders': 'ఆర్డర్లు',
+    'analytics.topItems': 'టాప్ ఐటమ్స్',
+    'analytics.popularCategories': 'జనాదరణ పొందిన వర్గాలు',
+    
+    'settings.restaurantDetails': 'రెస్టారెంట్ వివరాలు',
+    'settings.restaurantInfo': 'రెస్టారెంట్ సమాచారం',
+    'settings.name': 'రెస్టారెంట్ పేరు',
+    'settings.phone': 'ఫోన్ నంబర్',
+    'settings.address': 'చిరునామా',
+    'settings.currency': 'కరెన్సీ గుర్తు',
+    'settings.upiId': 'UPI ID (చెల్లింపుల కోసం)',
+    'settings.saved': 'సెట్టింగ్‌లు విజయవంతంగా సేవ్ చేయబడ్డాయి',
+    
+    'subscription.currentPlan': 'ప్రస్తుత ప్లాన్',
+    'subscription.upgrade': 'ప్లాన్‌ను అప్‌గ్రేడ్ చేయండి',
+    'subscription.features': 'చేర్చబడిన ఫీచర్లు:',
+    'subscription.free': 'ఉచితం',
+    'subscription.forever': 'ఎప్పటికీ',
+    'subscription.pro': 'ప్రో',
+    'subscription.perMonth': 'నెల',
+    'subscription.business': 'బిజినెస్',
+    'subscription.upgradePrompt': 'ప్రీమియం ఫీచర్లను అన్‌లాక్ చేయడానికి మరియు మీ వ్యాపారాన్ని వృద్ధి చేయడానికి మీ ప్లాన్‌ను అప్‌గ్రేడ్ చేయండి.',
+    'subscription.thankYou': 'మాకు మద్దతు ఇచ్చినందుకు ధన్యవాదాలు!',
+    'subscription.mostPopular': 'అత్యంత ప్రజాదరణ పొందినది',
+    'subscription.faq': 'తరచుగా అడిగే ప్రశ్నలు',
+    'subscription.upgradePlan': 'మీ ప్లాన్‌ను అప్‌గ్రేడ్ చేయండి',
+    'subscription.contactPrompt': 'ప్రో లేదా బిజినెస్ ప్లాన్‌కు అప్‌గ్రేడ్ చేయడానికి, దయచేసి వాట్సాప్ ద్వారా మా బృందాన్ని సంప్రదించండి. మేము మీ ఖాతాను తక్షణమే సెటప్ చేస్తాము.',
+    'subscription.contactWa': 'వాట్సాప్‌లో సంప్రదించండి',
+    'subscription.faq1.q': 'నేను నా ప్లాన్‌ను తర్వాత మార్చవచ్చా?',
+    'subscription.faq1.a': 'అవును, మీరు ఎప్పుడైనా మీ ప్లాన్‌ను అప్‌గ్రేడ్ లేదా డౌన్‌గ్రేడ్ చేయవచ్చు. మమ్మల్ని సంప్రదిస్తే మేము మీ చందాను సర్దుబాటు చేస్తాము.',
+    'subscription.faq2.q': 'మీరు ఏ చెల్లింపు ఎంపికలకు మద్దతు ఇస్తారు?',
+    'subscription.faq2.a': 'మేము UPI, క్రెడిట్/డెబిట్ కార్డ్‌లు, నెట్ బ్యాంకింగ్ మరియు డిజిటల్ వాలెట్‌లతో సహా అన్ని ప్రధాన చెల్లింపు పద్ధతులకు మద్దతు ఇస్తాము.',
+    'subscription.faq3.q': 'ఏదైనా సెటప్ రుసుము ఉందా?',
+    'subscription.faq3.a': 'లేదు, ఎలాంటి దాచిన సెటప్ రుసుములు లేవు. మీరు ఎంచుకున్న ప్లాన్ కోసం జాబితా చేయబడిన ధరను మాత్రమే చెల్లిస్తారు.',
+    'subscription.faq4.q': 'నేను నా చందాను రద్దు చేయవచ్చా?',
+    'subscription.faq4.a': 'అవును, మీరు ఎప్పుడైనా మీ చందాను రద్దు చేయవచ్చు. బిల్లింగ్ వ్యవధి ముగిసే వరకు మీ ప్లాన్ సక్రియంగా ఉంటుంది.',
+  },
+  hi: {
+    'nav.dashboard': 'डैशबोर्ड',
+    'nav.menu': 'मेनू',
+    'nav.orders': 'ऑर्डर',
+    'nav.tables': 'टेबल्स',
+    'nav.ratings': 'रेटिंग्स',
+    'nav.analytics': 'एनालिटिक्स',
+    'nav.subscription': 'सदस्यता',
+    'nav.settings': 'सेटिंग्स',
+    'nav.signOut': 'साइन आउट',
+    
+    'dashboard.greeting': 'यहाँ देखें आज क्या हो रहा है।',
+    'dashboard.copyLink': 'लिंक कॉपी करें',
+    'dashboard.viewMenu': 'मेनू देखें',
+    'dashboard.todayOrders': 'आज के ऑर्डर',
+    'dashboard.todayRevenue': 'आज की कमाई',
+    'dashboard.menuItems': 'मेनू आइटम',
+    'dashboard.activeTables': 'सक्रिय टेबल्स',
+    'dashboard.tableOverview': 'टेबल अवलोकन',
+    'dashboard.available': 'उपलब्ध',
+    'dashboard.occupied': 'भरे हुए',
+    'dashboard.inactive': 'निष्क्रिय',
+    'dashboard.quickActions': 'त्वरित कार्रवाई',
+    'dashboard.manageMenu': 'मेनू प्रबंधित करें',
+    'dashboard.manageMenuDesc': 'मेनू आइटम जोड़ें, संपादित करें या हटाएं',
+    'dashboard.viewOrders': 'ऑर्डर देखें',
+    'dashboard.viewOrdersDesc': 'वास्तविक समय में आने वाले ऑर्डर देखें',
+    'dashboard.qrCodes': 'QR कोड',
+    'dashboard.qrCodesDesc': 'अपनी टेबल्स के लिए QR कोड जनरेट करें',
+    'dashboard.recentOrders': 'हाल के ऑर्डर',
+    'dashboard.viewAll': 'सभी देखें',
+    'dashboard.noOrders': 'अभी तक कोई ऑर्डर नहीं। वे यहाँ दिखाई देंगे।',
+    
+    'header.title.dashboard': 'डैशबोर्ड',
+    'header.title.menu': 'मेनू',
+    'header.title.orders': 'ऑर्डर',
+    'header.title.tables': 'टेबल्स',
+    'header.title.ratings': 'रेटिंग्स',
+    'header.title.analytics': 'एनालिटिक्स',
+    'header.title.subscription': 'सदस्यता',
+    'header.title.settings': 'सेटिंग्स',
+    
+    'generic.save': 'सहेजें',
+    'generic.cancel': 'रद्द करें',
+    'generic.add': 'जोड़ें',
+    'generic.edit': 'संपादित करें',
+    'generic.delete': 'हटाएं',
+    'generic.search': 'खोजें',
+    'generic.loading': 'लोड हो रहा है...',
+    'generic.success': 'सफलता',
+    'generic.error': 'त्रुटि',
+    'generic.copied': 'लिंक कॉपी किया गया!',
+    'generic.signedOut': 'साइन आउट हो गए',
+    'generic.table': 'टेबल',
+    
+    'menu.addCategory': 'श्रेणी जोड़ें',
+    'menu.addItem': 'आइटम जोड़ें',
+    'menu.noItems': 'कोई मेनू आइटम नहीं मिला। शुरू करने के लिए कुछ जोड़ें।',
+    'menu.categoryName': 'श्रेणी का नाम',
+    'menu.itemName': 'आइटम का नाम',
+    'menu.price': 'कीमत',
+    'menu.description': 'विवरण',
+    'menu.isVeg': 'शाकाहारी',
+    'menu.isAvailable': 'उपलब्ध है',
+    'menu.imageUrl': 'छवि URL',
+    'menu.itemSaved': 'आइटम सफलतापूर्वक सहेजा गया',
+    'menu.itemDeleted': 'आइटम हटा दिया गया',
+    
+    'orders.status.pending': 'लंबित',
+    'orders.status.accepted': 'स्वीकार कर लिया',
+    'orders.status.preparing': 'तैयार हो रहा है',
+    'orders.status.ready': 'तैयार',
+    'orders.status.completed': 'पूरा हुआ',
+    'orders.status.cancelled': 'रद्द',
+    'orders.noOrders': 'इस स्थिति के लिए कोई ऑर्डर नहीं मिला।',
+    'orders.total': 'कुल',
+    'orders.updateStatus': 'स्थिति अपडेट करें',
+    
+    'tables.addTable': 'टेबल जोड़ें',
+    'tables.downloadQr': 'सभी QR कोड डाउनलोड करें',
+    'tables.noTables': 'अभी तक कोई टेबल कॉन्फ़िगर नहीं की गई है।',
+    'tables.tableNumber': 'टेबल नंबर',
+    'tables.tableSaved': 'टेबल सफलतापूर्वक सहेजी गई',
+    'tables.tableDeleted': 'टेबल हटा दी गई',
+    
+    'ratings.average': 'औसत रेटिंग',
+    'ratings.total': 'कुल समीक्षाएं',
+    'ratings.noRatings': 'अभी तक कोई रेटिंग नहीं मिली है।',
+    'ratings.verified': 'सत्यापित ग्राहक',
+    
+    'analytics.revenue': 'कमाई',
+    'analytics.orders': 'ऑर्डर',
+    'analytics.topItems': 'शीर्ष आइटम',
+    'analytics.popularCategories': 'लोकप्रिय श्रेणियां',
+    
+    'settings.restaurantDetails': 'रेस्तरां विवरण',
+    'settings.restaurantInfo': 'रेस्तरां की जानकारी',
+    'settings.name': 'रेस्तरां का नाम',
+    'settings.phone': 'फ़ोन नंबर',
+    'settings.address': 'पता',
+    'settings.currency': 'मुद्रा प्रतीक',
+    'settings.upiId': 'UPI ID (भुगतान के लिए)',
+    'settings.saved': 'सेटिंग्स सफलतापूर्वक सहेजी गईं',
+    
+    'subscription.currentPlan': 'वर्तमान योजना',
+    'subscription.upgrade': 'योजना अपग्रेड करें',
+    'subscription.features': 'शामिल विशेषताएं:',
+    'subscription.free': 'निःशुल्क',
+    'subscription.forever': 'हमेशा के लिए',
+    'subscription.pro': 'प्रो',
+    'subscription.perMonth': 'महीना',
+    'subscription.business': 'बिजनेस',
+    'subscription.upgradePrompt': 'प्रीमियम सुविधाओं को अनलॉक करने और अपने व्यवसाय को बढ़ाने के लिए अपनी योजना को अपग्रेड करें।',
+    'subscription.thankYou': 'हमारा समर्थन करने के लिए धन्यवाद!',
+    'subscription.mostPopular': 'सबसे लोकप्रिय',
+    'subscription.faq': 'अक्सर पूछे जाने वाले प्रश्न',
+    'subscription.upgradePlan': 'अपनी योजना अपग्रेड करें',
+    'subscription.contactPrompt': 'प्रो या बिजनेस प्लान में अपग्रेड करने के लिए, कृपया व्हाट्सएप के माध्यम से हमारी टीम से संपर्क करें। हम आपका खाता तुरंत सेट कर देंगे।',
+    'subscription.contactWa': 'व्हाट्सएप पर संपर्क करें',
+    'subscription.faq1.q': 'क्या मैं बाद में अपनी योजना बदल सकता हूँ?',
+    'subscription.faq1.a': 'हाँ, आप किसी भी समय अपनी योजना को अपग्रेड या डाउनग्रेड कर सकते हैं। बस हमसे संपर्क करें और हम आपकी सदस्यता को समायोजित कर देंगे।',
+    'subscription.faq2.q': 'आप किन भुगतान विकल्पों का समर्थन करते हैं?',
+    'subscription.faq2.a': 'हम UPI, क्रेडिट/डेबिट कार्ड, नेट बैंकिंग और डिजिटल वॉलेट सहित सभी प्रमुख भुगतान विधियों का समर्थन करते हैं।',
+    'subscription.faq3.q': 'क्या कोई सेटअप शुल्क है?',
+    'subscription.faq3.a': 'नहीं, कोई छिपी हुई सेटअप फीस नहीं है। आप केवल अपनी चुनी हुई योजना के लिए सूचीबद्ध कीमत का भुगतान करते हैं।',
+    'subscription.faq4.q': 'क्या मैं अपनी सदस्यता रद्द कर सकता हूँ?',
+    'subscription.faq4.a': 'हाँ, आप किसी भी समय अपनी सदस्यता रद्द कर सकते हैं। आपकी योजना बिलिंग अवधि के अंत तक सक्रिय रहेगी।',
+  }
+};
+
+interface I18nContextType {
+  language: Language;
+  setLanguage: (lang: Language) => void;
+  t: (key: string) => string;
+}
+
+const I18nContext = createContext<I18nContextType | undefined>(undefined);
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [language, setLanguage] = useState<Language>(() => {
+    const saved = localStorage.getItem('adminLanguage');
+    return (saved as Language) || 'en';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('adminLanguage', language);
+  }, [language]);
+
+  const t = (key: string): string => {
+    return translations[language][key as keyof typeof translations['en']] || key;
+  };
+
+  return (
+    <I18nContext.Provider value={{ language, setLanguage, t }}>
+      {children}
+    </I18nContext.Provider>
+  );
+}
+
+export function useI18n() {
+  const context = useContext(I18nContext);
+  if (!context) {
+    throw new Error('useI18n must be used within an I18nProvider');
+  }
+  return context;
+}
