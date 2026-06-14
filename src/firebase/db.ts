@@ -165,21 +165,20 @@ export function subscribeToOrders(
   restaurantId: string,
   callback: (orders: Order[]) => void
 ) {
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  // No server-side date filter here — newly placed orders use serverTimestamp()
+  // which is null on the client until the server resolves it, causing them to
+  // be excluded by a `where('createdAt', '>=', ...)` clause. Date filtering is
+  // handled client-side in the Orders page UI (today / 7days / month tabs).
   const q = query(
     collection(db, 'restaurants', restaurantId, 'orders'),
-    where('createdAt', '>=', Timestamp.fromDate(sevenDaysAgo))
+    orderBy('createdAt', 'desc'),
+    limit(200)
   );
   return onSnapshot(
     q,
+    { includeMetadataChanges: false },
     snap => {
       const orders = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      orders.sort((a, b) => {
-        const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
-        const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
-        return timeB - timeA;
-      });
       callback(orders);
     },
     error => {
