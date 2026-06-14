@@ -100,7 +100,7 @@ export default function Tables() {
 
     generateAll();
     return () => { cancelled = true; };
-  }, [tables, restaurant, restaurant?.slug, baseUrl]);
+  }, [tables, restaurant, restaurant?.slug, origin]);
 
   async function handleAddTable() {
     const number = tableNum.trim();
