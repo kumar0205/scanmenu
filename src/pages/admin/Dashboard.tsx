@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClipboardList, DollarSign, UtensilsCrossed, Grid3x3 as Grid3X3, ArrowRight, QrCode, Link2, ExternalLink } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Badge, statusBadge } from '../../components/ui/Badge';
@@ -37,7 +38,11 @@ export default function Dashboard() {
   const activeTables = tables.filter(table => table.status !== 'inactive').length;
   const recentOrders = orders.slice(0, 5);
   const currency = restaurant?.currency ?? '₹';
-  const menuUrl = `${window.location.origin}/${restaurant?.slug}`;
+  const origin = Capacitor.isNativePlatform()
+    ? (import.meta.env.VITE_APP_BASE_URL || window.location.origin)
+    : window.location.origin;
+
+  const menuUrl = `${origin}/${restaurant?.slug}`;
 
   function copyLink() {
     navigator.clipboard.writeText(menuUrl);

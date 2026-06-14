@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { QrCode, Plus, Download, Printer, Grid3x3 as Grid3X3, RotateCcw } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -54,15 +55,16 @@ export default function Tables() {
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
   const [qrLoading, setQrLoading] = useState(true);
 
-  // Always use the current origin so QR codes point to the live domain.
-  // Never use VITE_APP_BASE_URL — it may contain localhost in development.
-  const origin = window.location.origin;
+  // Browser uses origin; APK uses real website domain (via VITE_APP_BASE_URL).
+  const BASE_URL = Capacitor.isNativePlatform()
+    ? (import.meta.env.VITE_APP_BASE_URL || window.location.origin)
+    : window.location.origin;
 
   // Build a QR URL safely — strips any leading slash from slug so we
   // never produce double-slashes like //abhiruchi.
   function buildQrUrl(slug: string, tableNumber: string, token: string): string {
     const cleanSlug = slug.replace(/^\/+/, '');
-    return `${origin}/${cleanSlug}?table=${encodeURIComponent(tableNumber)}&p=${encodeURIComponent(token)}`;
+    return `${BASE_URL}/${cleanSlug}?table=${encodeURIComponent(tableNumber)}&p=${encodeURIComponent(token)}`;
   }
 
   useEffect(() => {
@@ -100,7 +102,7 @@ export default function Tables() {
 
     generateAll();
     return () => { cancelled = true; };
-  }, [tables, restaurant, restaurant?.slug, origin]);
+  }, [tables, restaurant, restaurant?.slug, BASE_URL]);
 
   async function handleAddTable() {
     const number = tableNum.trim();

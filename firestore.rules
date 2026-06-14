@@ -39,7 +39,8 @@ service cloud.firestore {
         isRestaurantOwner(resource.data.restaurantId) ||
         isSuperAdmin() ||
         (
-          get(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/orders/$(resource.data.orderId)).data.customerId == request.auth.uid &&
+          ((!('customerId' in resource.data) && get(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/orders/$(resource.data.orderId)).data.customerId == request.auth.uid) ||
+           (resource.data.customerId == request.auth.uid)) &&
           resource.data.status == 'pending_payment' &&
           request.resource.data.status == 'pending_payment' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'totalAmount', 'userConfirmedPayment']) &&

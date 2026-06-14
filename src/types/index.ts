@@ -25,6 +25,7 @@ export interface Restaurant {
   plan: 'free' | 'pro' | 'business';
   ownerId: string;
   upiId?: string;
+  upiType?: 'merchant' | 'personal';
   waterBottle?: {
     enabled: boolean;
     price: number;

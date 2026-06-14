@@ -396,6 +396,13 @@ export default function MenuPage() {
     const finalCustomerName = customerName.trim() || 'User';
     setPlacing(true);
     try {
+      // Ensure the user is fully signed in anonymously before proceeding
+      let currentUid = auth.currentUser?.uid;
+      if (!currentUid) {
+        const userCred = await signInAnonymously(auth);
+        currentUid = userCred.user.uid;
+      }
+
       const sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
         ? crypto.randomUUID()
         : Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -405,7 +412,7 @@ export default function MenuPage() {
       const orderId = orderRef.id;
 
       await setDoc(orderRef, {
-        customerId: auth.currentUser?.uid || 'anonymous',
+        customerId: currentUid,
         customerName: finalCustomerName,
         tableId: tableId || tableNumber,
         tableNumber,
@@ -430,6 +437,8 @@ export default function MenuPage() {
         items: cart,
         totalAmount: finalTotal,
         upiId: restaurant.upiId || '',
+        upiType: restaurant.upiType || 'personal',
+        customerId: currentUid,
         status: 'pending_payment',
         orderId,
         expiresAt: new Timestamp(

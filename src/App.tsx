@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Suspense, lazy } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from './context/AuthContext';
 import { I18nProvider } from './context/I18nContext';
 import { AdminLayout } from './components/layout/AdminLayout';
@@ -35,6 +36,8 @@ const GlobalLoader = () => (
   </div>
 );
 
+const isNative = Capacitor.isNativePlatform();
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -42,7 +45,7 @@ export default function App() {
         <I18nProvider>
           <Suspense fallback={<GlobalLoader />}>
             <Routes>
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={isNative ? <Navigate to="/admin" replace /> : <Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
 
@@ -71,10 +74,21 @@ export default function App() {
                 <Route path="settings" element={<Navigate to="/super-admin/restaurants" replace />} />
               </Route>
 
-              <Route path="/pay/:sessionId" element={<PayPage />} />
-              <Route path="/:restaurantSlug" element={<MenuPage />} />
-              <Route path="/:restaurantSlug/success/:orderId" element={<OrderSuccessPage />} />
-              <Route path="/:restaurantSlug/rate/:orderId" element={<RatingPage />} />
+              {isNative ? (
+                <>
+                  <Route path="/pay/:sessionId" element={<Navigate to="/admin" replace />} />
+                  <Route path="/:restaurantSlug" element={<Navigate to="/admin" replace />} />
+                  <Route path="/:restaurantSlug/success/:orderId" element={<Navigate to="/admin" replace />} />
+                  <Route path="/:restaurantSlug/rate/:orderId" element={<Navigate to="/admin" replace />} />
+                </>
+              ) : (
+                <>
+                  <Route path="/pay/:sessionId" element={<PayPage />} />
+                  <Route path="/:restaurantSlug" element={<MenuPage />} />
+                  <Route path="/:restaurantSlug/success/:orderId" element={<OrderSuccessPage />} />
+                  <Route path="/:restaurantSlug/rate/:orderId" element={<RatingPage />} />
+                </>
+              )}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

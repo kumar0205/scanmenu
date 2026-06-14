@@ -4,6 +4,7 @@ import {
   Link2, ExternalLink, Droplets, Bell, X, Plus, Globe,
   Volume2, Play, Square, Trash2, Smartphone, Download
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -29,6 +30,7 @@ export default function Settings() {
   const [phone, setPhone] = useState(restaurant?.phone ?? '');
   const [currency, setCurrency] = useState(restaurant?.currency ?? '₹');
   const [upiId, setUpiId] = useState(restaurant?.upiId ?? '');
+  const [upiType, setUpiType] = useState<'merchant' | 'personal'>(restaurant?.upiType ?? 'personal');
   const [googleUrl, setGoogleUrl] = useState(restaurant?.googleReviewUrl ?? '');
   const [rewards, setRewards] = useState<RewardSettings>(restaurant?.rewards ?? {
     active: false, discountPercent: 10, discountLabel: '10% Off', dessertLabel: 'Free Dessert', dessertDescription: 'On next order',
@@ -67,7 +69,11 @@ export default function Settings() {
   // PWA states
   const { isInstallable, isStandalone, installApp, isIOS } = usePWA();
 
-  const menuUrl = `${window.location.origin}/${restaurant?.slug}`;
+  const origin = Capacitor.isNativePlatform()
+    ? (import.meta.env.VITE_APP_BASE_URL || window.location.origin)
+    : window.location.origin;
+
+  const menuUrl = `${origin}/${restaurant?.slug}`;
 
   useEffect(() => {
     if (restaurant) {
@@ -78,6 +84,7 @@ export default function Settings() {
       setPhone(restaurant.phone);
       setCurrency(restaurant.currency);
       setUpiId(restaurant.upiId ?? '');
+      setUpiType(restaurant.upiType ?? 'personal');
       setGoogleUrl(restaurant.googleReviewUrl);
       setRewards(restaurant.rewards);
       if (restaurant.waterBottle) {
@@ -180,6 +187,7 @@ export default function Settings() {
         phone,
         currency,
         upiId,
+        upiType,
         googleReviewUrl: googleUrl,
       };
       if (!isDemo && restaurantId) {
@@ -192,6 +200,7 @@ export default function Settings() {
           phone,
           currency,
           upiId,
+          upiType,
           googleReviewUrl: googleUrl,
         });
       }
@@ -372,6 +381,22 @@ export default function Settings() {
             </div>
             <Input label={t('settings.phone')} value={phone} onChange={e => setPhone(e.target.value)} />
             <Input label={t('settings.upiId')} value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="e.g. merchant@upi" />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[#a1a1aa]">{t('settings.upiType')}</label>
+              <select
+                className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#22c55e]"
+                value={upiType}
+                onChange={e => setUpiType(e.target.value as 'merchant' | 'personal')}
+              >
+                <option value="personal">{t('settings.upiTypePersonal')}</option>
+                <option value="merchant">{t('settings.upiTypeMerchant')}</option>
+              </select>
+              <p className="text-[10px] text-[#71717a] mt-0.5 leading-relaxed">
+                {upiType === 'personal'
+                  ? "Recommended for personal UPI IDs. Prevents payment app rejections by requiring customers to enter the amount manually."
+                  : "Use only with registered, verified Merchant UPI IDs that support pre-filled amounts."}
+              </p>
+            </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-[#a1a1aa]">{t('settings.currency')}</label>
               <select

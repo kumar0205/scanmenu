@@ -19,6 +19,8 @@ interface SessionData {
   items: Array<{ name: string; price: number; qty: number }>;
   totalAmount: number;
   upiId: string;
+  upiType?: 'merchant' | 'personal';
+  customerId?: string;
   status: 'pending_payment' | 'paid';
   userConfirmedPayment?: boolean;
   orderId: string;
@@ -56,10 +58,24 @@ export default function PayPage() {
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const qrGeneratedRef = useRef(false);
 
+  const [authInitialized, setAuthInitialized] = useState(false);
+  const [currentUserUid, setCurrentUserUid] = useState<string | null>(null);
+  const isDifferentUser = authInitialized && session?.customerId && currentUserUid && session.customerId !== currentUserUid;
+
   async function handleConfirmPayment() {
     if (!session || !sessionId) return;
     setConfirmingPayment(true);
     try {
+      let currentUid = auth.currentUser?.uid;
+      if (!currentUid) {
+        const userCred = await signInAnonymously(auth);
+        currentUid = userCred.user.uid;
+      }
+      if (session.customerId && session.customerId !== currentUid) {
+        toast.error('Device mismatch: Please use the original device that placed the order.');
+        setConfirmingPayment(false);
+        return;
+      }
       const batch = writeBatch(db);
       batch.update(doc(db, 'sessions', sessionId), { userConfirmedPayment: true });
       batch.update(doc(db, 'restaurants', session.restaurantId, 'orders', session.orderId), { paymentStatus: 'verifying' });
@@ -90,10 +106,18 @@ export default function PayPage() {
     if (hasFirebase) {
       const unsubscribe = onAuthStateChanged(auth, (u) => {
         if (!u) {
-          signInAnonymously(auth).catch(console.error);
+          signInAnonymously(auth).then((cred) => {
+            setCurrentUserUid(cred.user.uid);
+            setAuthInitialized(true);
+          }).catch(console.error);
+        } else {
+          setCurrentUserUid(u.uid);
+          setAuthInitialized(true);
         }
       });
       return () => unsubscribe();
+    } else {
+      setAuthInitialized(true);
     }
   }, []);
 
@@ -143,7 +167,9 @@ export default function PayPage() {
         } else if (!qrGeneratedRef.current) {
           // Generate UPI Link
           const cleanName = encodeURIComponent(data.restaurantName || 'Restaurant');
-          const upiLink = `upi://pay?pa=${data.upiId}&pn=${cleanName}&am=${data.totalAmount}&tn=Order-${sessionId.slice(0, 8)}&cu=INR`;
+          const upiLink = data.upiType === 'merchant'
+            ? `upi://pay?pa=${data.upiId}&pn=${cleanName}&am=${data.totalAmount}&tn=Order-${sessionId.slice(0, 8)}&cu=INR`
+            : `upi://pay?pa=${data.upiId}&pn=${cleanName}&cu=INR`;
 
           // Generate QR Code URL
           try {
@@ -174,7 +200,11 @@ export default function PayPage() {
     return () => unsubscribe();
   }, [sessionId]);
 
-  const upiLink = session ? `upi://pay?pa=${session.upiId}&pn=${encodeURIComponent(session.restaurantName)}&am=${session.totalAmount}&tn=Order-${sessionId!.slice(0, 8)}&cu=INR` : '';
+  const upiLink = session
+    ? (session.upiType === 'merchant'
+        ? `upi://pay?pa=${session.upiId}&pn=${encodeURIComponent(session.restaurantName)}&am=${session.totalAmount}&tn=Order-${sessionId!.slice(0, 8)}&cu=INR`
+        : `upi://pay?pa=${session.upiId}&pn=${encodeURIComponent(session.restaurantName)}&cu=INR`)
+    : '';
 
   if (loading) {
     return (
@@ -244,6 +274,20 @@ export default function PayPage() {
 
           <div className="h-[1px] bg-warm-200" />
           
+          {isDifferentUser && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-left flex gap-3 items-start animate-fade-in">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-red-900">Device/Browser Mismatch</h4>
+                <p className="text-[10px] text-red-700 mt-1 leading-normal font-medium">
+                  You are viewing this payment page in a different browser session or device.
+                  To prevent unauthorized actions, <strong>marking payment as paid or leaving feedback is disabled</strong>.
+                  Please complete these actions on the device and browser you used to place your order.
+                </p>
+              </div>
+            </div>
+          )}
+          
           {session.status === 'paid' ? (
             /* Thank you/Success Screen */
             <div className="py-12 px-4 text-center space-y-5 animate-pop-in">
@@ -311,10 +355,11 @@ export default function PayPage() {
                       return (
                         <button
                           key={i}
-                          onMouseEnter={() => setHover(i + 1)}
-                          onMouseLeave={() => setHover(0)}
-                          onClick={() => setStars(i + 1)}
-                          className="transition-transform hover:scale-110 focus:outline-none"
+                          disabled={isDifferentUser}
+                          onMouseEnter={() => !isDifferentUser && setHover(i + 1)}
+                          onMouseLeave={() => !isDifferentUser && setHover(0)}
+                          onClick={() => !isDifferentUser && setStars(i + 1)}
+                          className="transition-transform hover:scale-110 focus:outline-none disabled:opacity-50"
                         >
                           <Star className={`w-8 h-8 ${filled ? 'text-[#f59e0b] fill-[#f59e0b]' : 'text-stone-200'}`} />
                         </button>
@@ -331,9 +376,10 @@ export default function PayPage() {
                     <textarea
                       value={comment}
                       onChange={e => setComment(e.target.value)}
+                      disabled={isDifferentUser}
                       placeholder="Tell us more... (optional)"
                       rows={3}
-                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none mb-4"
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-xs text-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none mb-4 disabled:opacity-60"
                     />
 
                     {restaurant?.rewards?.active && stars >= 4 && (
@@ -374,7 +420,7 @@ export default function PayPage() {
 
                     <button
                       onClick={handleRatingSubmit}
-                      disabled={submittingRating || stars === 0}
+                      disabled={submittingRating || stars === 0 || isDifferentUser}
                       className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-xs shadow-sm shadow-[#22c55e]/25"
                     >
                       {submittingRating && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
@@ -406,6 +452,11 @@ export default function PayPage() {
                     <p className="text-[10px] text-warm-600 mt-4 leading-relaxed font-semibold flex items-center justify-center gap-1 uppercase tracking-wider">
                       <QrCode className="w-3.5 h-3.5 text-brand-500" /> Scan QR to Pay via GPay / PhonePe / Paytm
                     </p>
+                    {session.upiType !== 'merchant' && (
+                      <p className="text-[10px] text-amber-600 mt-2 font-bold uppercase tracking-wide">
+                        * Enter amount {formatCurrency(session.totalAmount, '₹')} manually after scanning
+                      </p>
+                    )}
                   </div>
 
                   {/* Mobile Deep Link Button */}
@@ -417,9 +468,21 @@ export default function PayPage() {
                       <Smartphone className="w-4 h-4" /> Pay directly via UPI Apps
                     </a>
                     
-                    <p className="text-[10px] text-warm-600 leading-normal max-w-xs mx-auto">
-                      Clicking the button will open GPay, PhonePe, Paytm, or BHIM directly on your mobile device.
-                    </p>
+                    {session.upiType !== 'merchant' ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-left max-w-xs mx-auto">
+                        <p className="text-[10px] font-bold text-amber-800 flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                          MANUAL ENTRY REQUIRED
+                        </p>
+                        <p className="text-[10px] text-amber-700 mt-1 leading-normal font-medium">
+                          Since this is a peer-to-peer transfer, you must <strong>manually enter the amount of {formatCurrency(session.totalAmount, '₹')}</strong> in your payment app when it opens.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-warm-600 leading-normal max-w-xs mx-auto">
+                        Clicking the button will open GPay, PhonePe, Paytm, or BHIM directly on your mobile device.
+                      </p>
+                    )}
                   </div>
 
                   {/* Step checklist */}
@@ -462,7 +525,7 @@ export default function PayPage() {
             ) : (
               <button
                 onClick={handleConfirmPayment}
-                disabled={confirmingPayment}
+                disabled={confirmingPayment || isDifferentUser}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-md flex items-center justify-center gap-2.5 text-sm transition-all transform active:scale-98 disabled:opacity-60 font-display uppercase tracking-wider"
               >
                 {confirmingPayment ? (
