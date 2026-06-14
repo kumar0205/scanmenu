@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Plus, FolderPlus, Pencil, Trash2, Loader2, Zap, FileSpreadsheet, Download } from 'lucide-react';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
@@ -23,9 +23,46 @@ interface ItemForm {
   categoryId: string;
   isVeg: boolean;
   imageUrl: string;
+  isCombo?: boolean;
+  comboPrices?: Array<{ persons: number; price: number }>;
 }
 
-const emptyForm: ItemForm = { name: '', description: '', price: '', categoryId: '', isVeg: true, imageUrl: '' };
+const emptyForm: ItemForm = { 
+  name: '', 
+  description: '', 
+  price: '', 
+  categoryId: '', 
+  isVeg: true, 
+  imageUrl: '',
+  isCombo: false,
+  comboPrices: [{ persons: 1, price: 0 }]
+};
+
+function parseCsvLine(line: string): string[] {
+  const cols: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      cols.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  cols.push(current.trim());
+  return cols;
+}
 
 export default function Menu() {
   const { restaurantId, restaurant, isDemo } = useAuthContext();
@@ -52,11 +89,19 @@ export default function Menu() {
   const filtered = activeCategory === 'all' ? items : items.filter(i => i.categoryId === activeCategory);
 
   async function saveCategory() {
-    if (!catName.trim()) return;
+    const name = catName.trim();
+    if (!name) {
+      toast.error('Category name is required');
+      return;
+    }
+    if (categories.some(category => category.name.toLowerCase() === name.toLowerCase())) {
+      toast.error('Category already exists');
+      return;
+    }
     setSaving(true);
     try {
       if (!isDemo && restaurantId) {
-        await addCategory(restaurantId, { name: catName.trim(), order: categories.length, isActive: true });
+        await addCategory(restaurantId, { name, order: categories.length, isActive: true });
       }
       toast.success(t('generic.success'));
       setCatModal(false);
@@ -94,8 +139,7 @@ export default function Menu() {
       });
       await Promise.all(promises);
       toast.success('Category order updated successfully!');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('Failed to update category order');
     }
   }
@@ -108,7 +152,16 @@ export default function Menu() {
 
   function openEditItem(item: MenuItem) {
     setEditItem(item);
-    setItemForm({ name: item.name, description: item.description, price: String(item.price), categoryId: item.categoryId, isVeg: item.isVeg, imageUrl: item.imageUrl });
+    setItemForm({ 
+      name: item.name, 
+      description: item.description, 
+      price: String(item.price), 
+      categoryId: item.categoryId, 
+      isVeg: item.isVeg, 
+      imageUrl: item.imageUrl,
+      isCombo: item.isCombo ?? false,
+      comboPrices: item.comboPrices ?? [{ persons: 1, price: item.price }]
+    });
     setItemModal(true);
   }
 
@@ -126,19 +179,56 @@ export default function Menu() {
   }
 
   async function saveItem() {
+    const name = itemForm.name.trim();
+    let price = Number(itemForm.price);
+    if (!name) {
+      toast.error('Item name is required');
+      return;
+    }
+    if (!itemForm.categoryId) {
+      toast.error('Please select a category');
+      return;
+    }
+
+    if (itemForm.isCombo) {
+      const cps = itemForm.comboPrices || [];
+      if (cps.length === 0) {
+        toast.error('At least one combo pricing option is required');
+        return;
+      }
+      for (const cp of cps) {
+        if (!cp.persons || cp.persons <= 0) {
+          toast.error('Number of persons must be greater than 0');
+          return;
+        }
+        if (!cp.price || cp.price <= 0) {
+          toast.error('Combo price must be greater than 0');
+          return;
+        }
+      }
+      price = cps[0].price;
+    } else {
+      if (!Number.isFinite(price) || price <= 0) {
+        toast.error('Price must be greater than 0');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       if (!isDemo && restaurantId) {
         const data = {
-          name: itemForm.name.trim(),
+          name,
           description: itemForm.description.trim(),
-          price: parseFloat(itemForm.price) || 0,
+          price,
           categoryId: itemForm.categoryId,
           isVeg: itemForm.isVeg,
           imageUrl: itemForm.imageUrl,
           isAvailable: true,
           order: editItem?.order ?? items.length,
           createdAt: editItem?.createdAt ?? Timestamp.now(),
+          isCombo: itemForm.isCombo || false,
+          comboPrices: itemForm.isCombo ? (itemForm.comboPrices || []) : [],
         };
         if (editItem) {
           await updateMenuItem(restaurantId, editItem.id, data);
@@ -151,7 +241,17 @@ export default function Menu() {
     } finally { setSaving(false); }
   }
 
-  async function importItemsList(itemsToImport: Array<{ name: string, category: string, price: number, description: string, isVeg: boolean }>) {
+  async function importItemsList(
+    itemsToImport: Array<{
+      name: string;
+      category: string;
+      price: number;
+      description: string;
+      isVeg: boolean;
+      isCombo?: boolean;
+      comboPrices?: Array<{ persons: number; price: number }>;
+    }>
+  ) {
     if (!restaurantId) return;
     
     const categoryCache: Record<string, string> = {};
@@ -183,7 +283,9 @@ export default function Menu() {
         imageUrl: '',
         isAvailable: true,
         order: items.length,
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
+        isCombo: item.isCombo || false,
+        comboPrices: item.comboPrices || []
       });
     }
   }
@@ -198,10 +300,23 @@ export default function Menu() {
     
     setSaving(true);
     try {
+      if (file.size > 1024 * 1024) {
+        toast.error('CSV file must be 1MB or smaller');
+        return;
+      }
+
       const text = await file.text();
       const lines = text.split(/\r?\n/);
       
-      const parsedItems: Array<{ name: string, category: string, price: number, description: string, isVeg: boolean }> = [];
+      const parsedItems: Array<{
+        name: string;
+        category: string;
+        price: number;
+        description: string;
+        isVeg: boolean;
+        isCombo?: boolean;
+        comboPrices?: Array<{ persons: number; price: number }>;
+      }> = [];
       let startIdx = 0;
       if (lines[0]?.toLowerCase().includes('name') || lines[0]?.toLowerCase().includes('category')) {
         startIdx = 1;
@@ -211,17 +326,51 @@ export default function Menu() {
         const line = lines[i].trim();
         if (!line) continue;
         
-        const cols = line.split(',').map(c => c.replace(/^["']|["']$/g, '').trim());
+        const cols = parseCsvLine(line).map(c => c.replace(/^["']|["']$/g, '').trim());
         if (cols.length < 3) continue;
         
         const name = cols[0];
         const category = cols[1];
-        const price = parseFloat(cols[2]) || 0;
+        const priceVal = parseFloat(cols[2]) || 0;
         const description = cols[3] ?? '';
         const isVeg = cols[4]?.toLowerCase() === 'false' ? false : true;
+        const isCombo = cols[5]?.toLowerCase() === 'true' || cols[5]?.toLowerCase() === 'yes';
         
-        if (name && category) {
-          parsedItems.push({ name, category, price, description, isVeg });
+        const comboPrices: Array<{ persons: number; price: number }> = [];
+        let price = priceVal;
+
+        if (isCombo && cols[6]) {
+          const parts = cols[6].split(/[;|]/);
+          for (const part of parts) {
+            const cleanPart = part.trim();
+            if (!cleanPart) continue;
+            const match = cleanPart.match(/(\d+)\s*(?:p|person|persons)?\s*:\s*(\d+)/i);
+            if (match) {
+              const pCount = parseInt(match[1]);
+              const pPrice = parseInt(match[2]);
+              if (pCount > 0 && pPrice > 0) {
+                comboPrices.push({ persons: pCount, price: pPrice });
+              }
+            }
+          }
+          if (comboPrices.length > 0) {
+            comboPrices.sort((a, b) => a.persons - b.persons);
+            if (price <= 0) {
+              price = comboPrices[0].price;
+            }
+          }
+        }
+        
+        if (name && category && (price > 0 || (isCombo && comboPrices.length > 0))) {
+          parsedItems.push({
+            name,
+            category,
+            price: price > 0 ? price : (comboPrices[0]?.price || 0),
+            description,
+            isVeg,
+            isCombo,
+            comboPrices
+          });
         }
       }
       
@@ -242,8 +391,12 @@ export default function Menu() {
   }
 
   function downloadSampleCsv() {
-    const csvContent = "data:text/csv;charset=utf-8,Name,Category,Price,Description,IsVeg\nPaneer Tikka,Starters,180,Spicy grilled paneer cubes,true\nButter Chicken,Main Course,240,Classic rich tomato gravy chicken,false\nButter Naan,Breads,40,Soft buttery flatbread,true\nVirgin Mojito,Drinks,90,Refreshing lime and mint cooler,true";
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = "Name,Category,Price,Description,IsVeg,IsCombo,ComboPrices\n" +
+      "Paneer Tikka,Starters,180,Spicy grilled paneer cubes,true,false,\n" +
+      "Chicken Mandi,Mandi,399,Delicious mandi,false,true,\"1:399; 2:499; 3:699\"\n" +
+      "Butter Naan,Breads,40,Soft buttery flatbread,true,false,\n" +
+      "Virgin Mojito,Drinks,90,Refreshing lime and mint cooler,true,false,";
+    const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", "scanmenu_sample_import.csv");
@@ -396,10 +549,10 @@ export default function Menu() {
                     <span className="text-[#22c55e] text-sm font-medium shrink-0">{currency}{item.price}</span>
                     {cat && <span className="text-[#52525b] text-xs bg-[#1a1a1a] px-2 py-0.5 rounded-full shrink-0 hidden sm:inline">{cat.name}</span>}
                     <Toggle checked={item.isAvailable} onChange={() => toggleAvailable(item)} />
-                    <button onClick={() => openEditItem(item)} className="p-1.5 rounded-md text-[#52525b] hover:text-[#22c55e] hover:bg-[#1a1a1a] transition-colors opacity-0 group-hover:opacity-100">
+                    <button onClick={() => openEditItem(item)} className="p-1.5 rounded-md text-[#52525b] hover:text-[#22c55e] hover:bg-[#1a1a1a] transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100">
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleDeleteItem(item)} className="p-1.5 rounded-md text-[#52525b] hover:text-[#ef4444] hover:bg-[#1a1a1a] transition-colors opacity-0 group-hover:opacity-100">
+                    <button onClick={() => handleDeleteItem(item)} className="p-1.5 rounded-md text-[#52525b] hover:text-[#ef4444] hover:bg-[#1a1a1a] transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -421,7 +574,81 @@ export default function Menu() {
         <div className="space-y-4">
           <Input label={`${t('menu.itemName')} *`} placeholder="Paneer Butter Masala" value={itemForm.name} onChange={e => setItemForm(f => ({ ...f, name: e.target.value }))} />
           <Textarea label={t('menu.description')} placeholder="Creamy tomato-based curry..." value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} rows={2} />
-          <Input label={`${t('menu.price')} *`} type="number" placeholder="180" value={itemForm.price} onChange={e => setItemForm(f => ({ ...f, price: e.target.value }))} prefix={currency} />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[#a1a1aa]">Is Combo?</span>
+            <Toggle checked={itemForm.isCombo || false} onChange={v => setItemForm(f => ({ ...f, isCombo: v }))} />
+          </div>
+
+          {itemForm.isCombo ? (
+            <div className="space-y-3 border border-[#2a2a2a] p-3 rounded-lg bg-[#161616]">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-[#a1a1aa]">Combo Pricing (Persons & Prices)</label>
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => {
+                    const current = itemForm.comboPrices || [];
+                    const nextPersons = current.length > 0 ? Math.max(...current.map(c => c.persons)) + 1 : 1;
+                    setItemForm(f => ({
+                      ...f,
+                      comboPrices: [...current, { persons: nextPersons, price: 0 }]
+                    }));
+                  }}
+                >
+                  + Add Option
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                {(itemForm.comboPrices || []).map((cp, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        placeholder="Persons"
+                        className="w-16 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#22c55e]"
+                        value={cp.persons || ''}
+                        onChange={e => {
+                          const val = parseInt(e.target.value) || 0;
+                          const updated = [...(itemForm.comboPrices || [])];
+                          updated[idx] = { ...updated[idx], persons: val };
+                          setItemForm(f => ({ ...f, comboPrices: updated }));
+                        }}
+                      />
+                      <span className="text-xs text-[#a1a1aa]">Person(s)</span>
+                    </div>
+                    <div className="flex-1 flex items-center gap-1.5">
+                      <span className="text-xs text-[#a1a1aa]">{currency}</span>
+                      <input
+                        type="number"
+                        placeholder="Price"
+                        className="w-24 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#22c55e]"
+                        value={cp.price || ''}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const updated = [...(itemForm.comboPrices || [])];
+                          updated[idx] = { ...updated[idx], price: val };
+                          setItemForm(f => ({ ...f, comboPrices: updated }));
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (itemForm.comboPrices || []).filter((_, i) => i !== idx);
+                        setItemForm(f => ({ ...f, comboPrices: updated }));
+                      }}
+                      className="text-[#ef4444] hover:text-red-400 text-xs p-1"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <Input label={`${t('menu.price')} *`} type="number" placeholder="180" value={itemForm.price} onChange={e => setItemForm(f => ({ ...f, price: e.target.value }))} prefix={currency} />
+          )}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-[#a1a1aa]">Category</label>
             <select
@@ -467,7 +694,7 @@ export default function Menu() {
             Import menu items in bulk using a simple spreadsheet. Make sure your CSV contains columns in this exact sequence:
             <br />
             <code className="text-white block mt-1.5 bg-[#1a1a1a] p-2 rounded border border-[#2a2a2a]">
-              Name, Category, Price, Description, IsVeg (true/false)
+              Name, Category, Price, Description, IsVeg (true/false), IsCombo (true/false), ComboPrices (e.g. "1:399; 2:499; 3:699")
             </code>
           </div>
 

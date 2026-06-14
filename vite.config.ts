@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import crypto from 'crypto';
 
 if (typeof globalThis.crypto === 'undefined') {
-  globalThis.crypto = crypto.webcrypto as any;
+  globalThis.crypto = crypto.webcrypto as Crypto;
 }
 
 // https://vitejs.dev/config/
@@ -83,8 +83,17 @@ export default defineConfig({
       }
     })
   ],
-  optimizeDeps: {
-    exclude: ['lucide-react'],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          recharts: ['recharts'],
+          icons: ['lucide-react']
+        }
+      }
+    }
   },
   server: {
     port: 3000,

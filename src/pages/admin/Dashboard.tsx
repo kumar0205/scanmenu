@@ -9,13 +9,12 @@ import { useI18n } from '../../context/I18nContext';
 import { useOrders } from '../../hooks/useOrders';
 import { useMenu } from '../../hooks/useMenu';
 import { subscribeToTables } from '../../firebase/db';
-import { mockTables } from '../../lib/mockData';
 import { formatCurrency, formatTimeAgo, getGreeting } from '../../utils/formatters';
 import type { Table } from '../../types';
 import toast from 'react-hot-toast';
 
 export default function Dashboard() {
-  const { restaurant, restaurantId, isDemo } = useAuthContext();
+  const { restaurant, restaurantId } = useAuthContext();
   const { t } = useI18n();
   const { orders, loading: ordersLoading } = useOrders(restaurantId);
   const { items, loading: menuLoading } = useMenu(restaurantId);
@@ -23,9 +22,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    if (isDemo) { setTables(mockTables); return; }
     return subscribeToTables(restaurantId, setTables);
-  }, [restaurantId, isDemo]);
+  }, [restaurantId]);
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayOrders = orders.filter(o => {
@@ -182,9 +180,14 @@ export default function Dashboard() {
                       <span className="text-white text-sm font-medium">{t('generic.table')} {o.tableNumber}</span>
                       <span className="text-[#52525b] text-xs">·</span>
                       <span className="text-[#a1a1aa] text-xs">{o.customerName}</span>
+                      {o.items.some(i => i.isExtra) && (
+                        <Badge variant="amber" className="text-[9px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider animate-pulse">
+                          Extra Added
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-[#52525b] text-xs mt-0.5 truncate">
-                      {o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}
+                      {o.items.map(i => `${i.qty}x ${i.name}${i.isExtra ? ' (Extra)' : ''}`).join(', ')}
                     </p>
                   </div>
                   <Badge variant={statusBadge(o.status)}>{t(`orders.status.${o.status}`)}</Badge>

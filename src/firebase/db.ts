@@ -4,24 +4,36 @@ import {
   getDocs,
   getDoc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
   where,
   orderBy,
+  limit,
   Timestamp,
   onSnapshot,
+  writeBatch,
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from './config';
 import type { Restaurant, Category, MenuItem, Table, Order, Rating, WaterRequest } from '../types';
+import toast from 'react-hot-toast';
 
 function toRestaurant(id: string, data: DocumentData): Restaurant {
   return { id, ...data } as Restaurant;
 }
 
+export async function getTableByNumber(restaurantId: string, tableNumber: string): Promise<Table | null> {
+  const q = query(collection(db, 'restaurants', restaurantId, 'tables'), where('number', '==', tableNumber), limit(1));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() } as Table;
+}
+
 export async function getRestaurantBySlug(slug: string): Promise<Restaurant | null> {
-  const q = query(collection(db, 'restaurants'), where('slug', '==', slug));
+  const q = query(collection(db, 'restaurants'), where('slug', '==', slug), limit(1));
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
@@ -29,7 +41,7 @@ export async function getRestaurantBySlug(slug: string): Promise<Restaurant | nu
 }
 
 export async function getRestaurantByOwnerId(uid: string): Promise<Restaurant | null> {
-  const q = query(collection(db, 'restaurants'), where('ownerId', '==', uid));
+  const q = query(collection(db, 'restaurants'), where('ownerId', '==', uid), limit(1));
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
@@ -65,15 +77,30 @@ export async function updateMenuItem(restaurantId: string, itemId: string, data:
 export async function deleteMenuItem(restaurantId: string, itemId: string): Promise<void> {
   await deleteDoc(doc(db, 'restaurants', restaurantId, 'items', itemId));
 }
-
 export async function deleteAllMenuItems(restaurantId: string): Promise<void> {
   const snap = await getDocs(collection(db, 'restaurants', restaurantId, 'items'));
-  const promises = snap.docs.map(d => deleteDoc(doc(db, 'restaurants', restaurantId, 'items', d.id)));
-  await Promise.all(promises);
+  
+  // Use a batch write for atomic deletion (handles up to 500 per batch)
+  const batch = writeBatch(db);
+  snap.docs.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  
+  await batch.commit();
+}
+
+function generate4CharToken(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 4; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
 }
 
 export async function addTable(restaurantId: string, data: Omit<Table, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'restaurants', restaurantId, 'tables'), data);
+  const qrToken = data.qrToken ?? generate4CharToken();
+  const ref = await addDoc(collection(db, 'restaurants', restaurantId, 'tables'), { ...data, qrToken });
   return ref.id;
 }
 
@@ -91,10 +118,8 @@ export async function getTableById(restaurantId: string, tableId: string): Promi
   return { id: snap.id, ...snap.data() } as Table;
 }
 
-export async function createOrder(restaurantId: string, data: Omit<Order, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'restaurants', restaurantId, 'orders'), data);
-  return ref.id;
-}
+// NOTE: Client-side order creation removed. All orders must go through
+// the `submitOrder` Cloud Function for server-side price verification.
 
 export async function updateOrderStatus(restaurantId: string, orderId: string, status: Order['status']): Promise<void> {
   await updateDoc(doc(db, 'restaurants', restaurantId, 'orders', orderId), {
@@ -104,8 +129,14 @@ export async function updateOrderStatus(restaurantId: string, orderId: string, s
 }
 
 export async function submitRating(restaurantId: string, data: Omit<Rating, 'id'>): Promise<string> {
-  const ref = await addDoc(collection(db, 'restaurants', restaurantId, 'ratings'), data);
-  return ref.id;
+  await setDoc(doc(db, 'restaurants', restaurantId, 'ratings', data.orderId), data);
+  return data.orderId;
+}
+
+export async function verifyRating(restaurantId: string, ratingId: string): Promise<void> {
+  await updateDoc(doc(db, 'restaurants', restaurantId, 'ratings', ratingId), {
+    verified: true,
+  });
 }
 
 export async function getTodaysOrders(restaurantId: string): Promise<Order[]> {
@@ -134,19 +165,28 @@ export function subscribeToOrders(
   restaurantId: string,
   callback: (orders: Order[]) => void
 ) {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const q = query(
     collection(db, 'restaurants', restaurantId, 'orders'),
-    where('status', 'in', ['pending', 'preparing', 'ready'])
+    where('createdAt', '>=', Timestamp.fromDate(sevenDaysAgo))
   );
-  return onSnapshot(q, snap => {
-    const orders = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-    orders.sort((a, b) => {
-      const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
-      const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
-      return timeB - timeA;
-    });
-    callback(orders);
-  });
+  return onSnapshot(
+    q,
+    snap => {
+      const orders = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+      orders.sort((a, b) => {
+        const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
+        const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
+        return timeB - timeA;
+      });
+      callback(orders);
+    },
+    error => {
+      console.error("subscribeToOrders failed:", error);
+      toast.error(`Order subscription failed: ${error.message}`);
+    }
+  );
 }
 
 export function subscribeToCategories(
@@ -200,30 +240,44 @@ export function subscribeToRatings(
   });
 }
 
-export async function createWaterRequest(restaurantId: string, tableNumber: string, qty: number, type: 'water' | 'waiter' = 'water'): Promise<string> {
+export async function createWaterRequest(
+  restaurantId: string, 
+  tableNumber: string, 
+  qty: number, 
+  type: 'water' | 'waiter' = 'water',
+  ml?: number | string,
+  price?: number
+): Promise<string> {
   const ref = await addDoc(collection(db, 'restaurants', restaurantId, 'requests'), {
     tableNumber,
     qty,
     type,
     status: 'pending',
     createdAt: Timestamp.now(),
+    ...(ml !== undefined ? { ml } : {}),
+    ...(price !== undefined ? { price } : {}),
   });
   return ref.id;
 }
 
 export function subscribeToWaterRequests(
   restaurantId: string,
-  callback: (reqs: WaterRequest[]) => void
+  callback: (reqs: WaterRequest[]) => void,
+  statusFilter: 'pending' | 'completed' = 'pending'
 ) {
-  const q = collection(db, 'restaurants', restaurantId, 'requests');
+  const q = query(
+    collection(db, 'restaurants', restaurantId, 'requests'),
+    where('status', '==', statusFilter)
+  );
   return onSnapshot(q, snap => {
     const reqs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WaterRequest));
+    // Sort client-side (oldest first for active, newest first for completed)
     reqs.sort((a, b) => {
       const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
       const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
-      return timeA - timeB;
+      return statusFilter === 'pending' ? timeA - timeB : timeB - timeA;
     });
-    callback(reqs);
+    callback(reqs.slice(0, 50));
   });
 }
 

@@ -1,4 +1,5 @@
 import { Store, TrendingUp, ShoppingBag, Activity, Clock, PlusCircle } from 'lucide-react';
+import type { SVGProps } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 // Mock data for the revenue chart
@@ -18,7 +19,7 @@ const recentActivity = [
   { id: 4, text: 'Payment received: ₹299 from Hotel Surya', time: '1 hr ago', type: 'payment', icon: CreditCardIcon, color: 'text-emerald-500', bg: 'bg-emerald-100' },
 ];
 
-function CreditCardIcon(props: any) {
+function CreditCardIcon(props: SVGProps<SVGSVGElement>) {
   return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
 }
 

@@ -22,12 +22,12 @@ const Subscription = lazy(() => import('./pages/admin/Subscription'));
 const Settings = lazy(() => import('./pages/admin/Settings'));
 
 const SuperLogin = lazy(() => import('./pages/super-admin/SuperLogin'));
-const SuperOverview = lazy(() => import('./pages/super-admin/Overview'));
 const SuperRestaurants = lazy(() => import('./pages/super-admin/Restaurants'));
 
 const MenuPage = lazy(() => import('./pages/customer/MenuPage'));
 const RatingPage = lazy(() => import('./pages/customer/RatingPage'));
 const PayPage = lazy(() => import('./pages/customer/PayPage'));
+const OrderSuccessPage = lazy(() => import('./pages/customer/OrderSuccessPage'));
 
 const GlobalLoader = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-warm-50/50 backdrop-blur-sm">
@@ -62,18 +62,18 @@ export default function App() {
               {/* SUPER ADMIN ROUTES */}
               <Route path="/super-admin/login" element={<SuperLogin />} />
               <Route path="/super-admin" element={<SuperAdminLayout />}>
-                <Route index element={<Navigate to="/super-admin/overview" replace />} />
-                <Route path="overview" element={<SuperOverview />} />
+                <Route index element={<Navigate to="/super-admin/restaurants" replace />} />
                 <Route path="restaurants" element={<SuperRestaurants />} />
-                <Route path="billing" element={<div className="p-8 text-center text-gray-500">Billing & Plans - Coming Soon</div>} />
-                <Route path="analytics" element={<div className="p-8 text-center text-gray-500">Platform Analytics - Coming Soon</div>} />
-                <Route path="users" element={<div className="p-8 text-center text-gray-500">Users & Owners - Coming Soon</div>} />
-                <Route path="notifications" element={<div className="p-8 text-center text-gray-500">Notifications - Coming Soon</div>} />
-                <Route path="settings" element={<div className="p-8 text-center text-gray-500">Platform Settings - Coming Soon</div>} />
+                <Route path="billing" element={<Navigate to="/super-admin/restaurants" replace />} />
+                <Route path="analytics" element={<Navigate to="/super-admin/restaurants" replace />} />
+                <Route path="users" element={<Navigate to="/super-admin/restaurants" replace />} />
+                <Route path="notifications" element={<Navigate to="/super-admin/restaurants" replace />} />
+                <Route path="settings" element={<Navigate to="/super-admin/restaurants" replace />} />
               </Route>
 
               <Route path="/pay/:sessionId" element={<PayPage />} />
               <Route path="/:restaurantSlug" element={<MenuPage />} />
+              <Route path="/:restaurantSlug/success/:orderId" element={<OrderSuccessPage />} />
               <Route path="/:restaurantSlug/rate/:orderId" element={<RatingPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

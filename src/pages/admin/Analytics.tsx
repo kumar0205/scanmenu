@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Calendar } from 'lucide-react';
+import { TrendingUp, Calendar, DollarSign, ShoppingBag } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -9,7 +9,6 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { subscribeToOrders } from '../../firebase/db';
-import { mockOrders } from '../../lib/mockData';
 import { formatCurrency } from '../../utils/formatters';
 import type { Order } from '../../types';
 
@@ -26,7 +25,7 @@ function getLast7Days() {
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function Analytics() {
-  const { restaurantId, restaurant, isDemo } = useAuthContext();
+  const { restaurantId, restaurant } = useAuthContext();
   const { t } = useI18n();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,9 +33,8 @@ export default function Analytics() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    if (isDemo) { setOrders(mockOrders); setLoading(false); return; }
     return subscribeToOrders(restaurantId, o => { setOrders(o); setLoading(false); });
-  }, [restaurantId, isDemo]);
+  }, [restaurantId]);
 
   const days = getLast7Days();
   const revenueData = days.map(d => {
@@ -57,7 +55,8 @@ export default function Analytics() {
   const todayOrders = orders.filter(o => (o.createdAt?.toMillis() ?? 0) >= today.getTime());
   const todayRevenue = todayOrders.filter(o => o.status === 'completed').reduce((s, o) => s + o.totalAmount, 0);
   const completedOrders = orders.filter(o => o.status === 'completed');
-  const avgOrderValue = completedOrders.length ? Math.round(completedOrders.reduce((s, o) => s + o.totalAmount, 0) / completedOrders.length) : 0;
+  const totalRevenue = completedOrders.reduce((s, o) => s + o.totalAmount, 0);
+  const avgOrderValue = completedOrders.length ? Math.round(totalRevenue / completedOrders.length) : 0;
 
   const statusData = ['pending', 'preparing', 'ready', 'completed', 'cancelled'].map(s => ({
     status: t(`orders.status.${s}`) || s.charAt(0).toUpperCase() + s.slice(1),
@@ -65,7 +64,7 @@ export default function Analytics() {
   }));
 
   const itemMap = new Map<string, { name: string; count: number; revenue: number; isVeg: boolean }>();
-  orders.forEach(o => {
+  completedOrders.forEach(o => {
     o.items.forEach(item => {
       const existing = itemMap.get(item.itemId);
       if (existing) {
@@ -93,24 +92,45 @@ export default function Analytics() {
       <AdminHeader title={t('header.title.analytics')} />
       <div className="p-6 space-y-5">
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
             <div className="w-10 h-10 rounded-lg bg-[rgba(34,197,94,0.15)] flex items-center justify-center mb-3">
-              <TrendingUp className="w-5 h-5 text-[#22c55e]" />
+              <DollarSign className="w-5 h-5 text-[#22c55e]" />
+            </div>
+            {loading ? <Skeleton className="h-8 w-24 mb-1" /> : (
+              <p className="text-white text-2xl font-semibold">{formatCurrency(totalRevenue, currency)}</p>
+            )}
+            <p className="text-[#a1a1aa] text-xs mt-0.5">Total Revenue (All Time)</p>
+          </div>
+          
+          <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+            <div className="w-10 h-10 rounded-lg bg-[rgba(59,130,246,0.15)] flex items-center justify-center mb-3">
+              <ShoppingBag className="w-5 h-5 text-[#3b82f6]" />
+            </div>
+            {loading ? <Skeleton className="h-8 w-16 mb-1" /> : (
+              <p className="text-white text-2xl font-semibold">{completedOrders.length}</p>
+            )}
+            <p className="text-[#a1a1aa] text-xs mt-0.5">Total Completed Orders</p>
+          </div>
+
+          <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+            <div className="w-10 h-10 rounded-lg bg-[rgba(168,85,247,0.15)] flex items-center justify-center mb-3">
+              <Calendar className="w-5 h-5 text-[#a855f7]" />
+            </div>
+            {loading ? <Skeleton className="h-8 w-16 mb-1" /> : (
+              <p className="text-white text-2xl font-semibold">{todayOrders.filter(o => o.status === 'completed').length}</p>
+            )}
+            <p className="text-[#a1a1aa] text-xs mt-0.5">{t('dashboard.todayOrders')} · {formatCurrency(todayRevenue, currency)}</p>
+          </div>
+
+          <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+            <div className="w-10 h-10 rounded-lg bg-[rgba(245,158,11,0.15)] flex items-center justify-center mb-3">
+              <TrendingUp className="w-5 h-5 text-[#f59e0b]" />
             </div>
             {loading ? <Skeleton className="h-8 w-24 mb-1" /> : (
               <p className="text-white text-2xl font-semibold">{formatCurrency(avgOrderValue, currency)}</p>
             )}
             <p className="text-[#a1a1aa] text-xs mt-0.5">Avg Order Value</p>
-          </div>
-          <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
-            <div className="w-10 h-10 rounded-lg bg-[rgba(59,130,246,0.15)] flex items-center justify-center mb-3">
-              <Calendar className="w-5 h-5 text-[#3b82f6]" />
-            </div>
-            {loading ? <Skeleton className="h-8 w-16 mb-1" /> : (
-              <p className="text-white text-2xl font-semibold">{todayOrders.length}</p>
-            )}
-            <p className="text-[#a1a1aa] text-xs mt-0.5">{t('dashboard.todayOrders')} · {formatCurrency(todayRevenue, currency)}</p>
           </div>
         </div>
 

@@ -21,12 +21,11 @@ export default function Subscription() {
     setLoadingPlan(planId);
     try {
       if (!isDemo && restaurantId) {
-        await updateRestaurant(restaurantId, { plan: planId });
+        await updateRestaurant(restaurantId, { plan: planId as "free" | "pro" | "business" });
       }
-      setRestaurant({ ...restaurant!, plan: planId });
+      setRestaurant({ ...restaurant!, plan: planId as "free" | "pro" | "business" });
       toast.success(planId === 'free' ? 'Subscription cancelled successfully!' : `Upgraded to ${planId} plan successfully!`);
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('Failed to change plan');
     } finally {
       setLoadingPlan(null);

@@ -1,20 +1,29 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthContext';
 import { useWaterRequests } from '../../hooks/useWaterRequests';
+import { useOrders } from '../../hooks/useOrders';
 import { completeWaterRequest } from '../../firebase/db';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
-import { GlassWater, Check, Clock, BellRing, ArrowUpDown } from 'lucide-react';
+import { GlassWater, Check, Clock, BellRing, ArrowUpDown, ClipboardList } from 'lucide-react';
 import toast from 'react-hot-toast';
+import type { Timestamp } from 'firebase/firestore';
 
 export default function Requests() {
   const { restaurantId } = useAuthContext();
-  const { requests, loading } = useWaterRequests(restaurantId);
   const [filter, setFilter] = useState<'pending' | 'completed'>('pending');
   const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('oldest');
+  const { requests, loading } = useWaterRequests(restaurantId, filter);
+  const { orders } = useOrders(restaurantId);
+  
+  const today = new Date().setHours(0, 0, 0, 0);
+  const pendingOrdersCount = orders.filter(o => {
+    const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
+    return o.status === 'pending' && ts >= today;
+  }).length;
 
-  const filteredRequests = requests.filter(r => r.status === filter);
-  const sortedRequests = [...filteredRequests].sort((a, b) => {
+  const sortedRequests = [...requests].sort((a, b) => {
     const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
     const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
     return sortOrder === 'latest' ? timeB - timeA : timeA - timeB;
@@ -25,21 +34,40 @@ export default function Requests() {
     try {
       await completeWaterRequest(restaurantId, requestId);
       toast.success(type === 'waiter' ? 'Waiter call marked as resolved!' : 'Water request marked as served!');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('Failed to complete request');
     }
   }
 
-  function formatTime(timestamp: any) {
+  function formatTime(timestamp?: Timestamp | Date | string | number) {
     if (!timestamp) return 'Just now';
-    const date = typeof timestamp.toDate === 'function' ? timestamp.toDate() : new Date(timestamp);
+    let date: Date;
+    if (typeof timestamp === 'object' && 'toDate' in timestamp && typeof timestamp.toDate === 'function') {
+      date = timestamp.toDate();
+    } else if (timestamp instanceof Date) {
+      date = timestamp;
+    } else {
+      date = new Date(timestamp as string | number);
+    }
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   return (
     <div className="bg-[#0a0a0a] min-h-screen text-white">
-      <AdminHeader title="Water Requests" />
+      <AdminHeader title="Requests">
+        <Link
+          to="/admin/orders"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1a1a1a] text-[#a1a1aa] hover:text-white border border-[#2a2a2a] transition-all duration-150"
+        >
+          <ClipboardList className="w-3.5 h-3.5 text-[#22c55e]" />
+          <span>Orders</span>
+          {pendingOrdersCount > 0 && (
+            <span className="w-4 h-4 bg-[#22c55e] text-black text-[9px] rounded-full flex items-center justify-center font-bold animate-pulse">
+              {pendingOrdersCount}
+            </span>
+          )}
+        </Link>
+      </AdminHeader>
       
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
         {/* Toggle Filters */}
@@ -53,7 +81,7 @@ export default function Requests() {
                   : 'text-[#a1a1aa] hover:bg-[#111111]'
               }`}
             >
-              Active Requests ({requests.filter(r => r.status === 'pending').length})
+              Active Requests{filter === 'pending' ? ` (${requests.length})` : ''}
             </button>
             <button
               onClick={() => setFilter('completed')}
@@ -63,7 +91,7 @@ export default function Requests() {
                   : 'text-[#a1a1aa] hover:bg-[#111111]'
               }`}
             >
-              Completed ({requests.filter(r => r.status === 'completed').length})
+              Completed{filter === 'completed' ? ` (${requests.length})` : ''}
             </button>
           </div>
 
@@ -80,7 +108,7 @@ export default function Requests() {
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#22c55e]" />
           </div>
-        ) : filteredRequests.length === 0 ? (
+        ) : requests.length === 0 ? (
           <div className="text-center py-16 bg-[#111111] border border-[#2a2a2a] rounded-2xl">
             <GlassWater className="w-12 h-12 text-[#52525b] mx-auto mb-3" />
             <p className="text-[#a1a1aa] text-sm">No {filter} requests found.</p>
@@ -125,7 +153,7 @@ export default function Requests() {
                       </>
                     ) : (
                       <>
-                        <span className="text-[#a1a1aa] text-xs">Mineral Water</span>
+                        <span className="text-[#a1a1aa] text-xs">Mineral Water {req.ml ? `(${req.ml}ml)` : ''}</span>
                         <span className="text-white text-base font-bold flex items-center gap-1.5">
                           💧 {req.qty} {req.qty > 1 ? 'Bottles' : 'Bottle'}
                         </span>

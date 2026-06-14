@@ -5,7 +5,7 @@ import { AdminSidebar } from './AdminSidebar';
 import { useAuthContext } from '../../context/AuthContext';
 
 export function AdminLayout() {
-  const { user, loading, isDemo } = useAuthContext();
+  const { user, userRole, loading, isDemo } = useAuthContext();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   if (loading) {
@@ -17,7 +17,7 @@ export function AdminLayout() {
   }
 
   // In demo mode, always allow access
-  if (!isDemo && !user) return <Navigate to="/login" replace />;
+  if (!isDemo && (!user || user.isAnonymous || (userRole !== 'owner' && userRole !== 'superAdmin'))) return <Navigate to="/login" replace />;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col lg:flex-row">

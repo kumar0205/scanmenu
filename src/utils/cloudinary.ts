@@ -1,7 +1,15 @@
 import imageCompression from "browser-image-compression";
 import toast from "react-hot-toast";
 
-const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || import.meta.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || "dthochffz";
+function validateImageFile(file: File) {
+  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  if (!allowedTypes.has(file.type)) {
+    throw new Error("Please upload a JPG, PNG, WebP, or GIF image.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("Image must be 5MB or smaller.");
+  }
+}
 
 export async function uploadToCloudinary(
   file: File, 
@@ -9,6 +17,8 @@ export async function uploadToCloudinary(
   onProgress?: (progress: number) => void
 ): Promise<string> {
   try {
+    validateImageFile(file);
+
     // 1. Compress image client-side
     const compressedFile = await imageCompression(file, {
       maxSizeMB: 0.3,
@@ -16,11 +26,14 @@ export async function uploadToCloudinary(
       onProgress: (pct) => onProgress?.(Math.floor(pct * 0.5)), // 50% for compression
     });
 
-    // 2. Upload to Cloudinary Unsigned
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "dthochffz";
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
+
+    // 2. Upload to Cloudinary using unsigned upload preset
     const formData = new FormData();
     formData.append("file", compressedFile);
-    formData.append("upload_preset", "scanmenu"); // Unsigned preset created by user
-    formData.append("folder", folder);
+    formData.append("upload_preset", uploadPreset);
+    formData.append("folder", `scanmenu/${folder}`);
 
     const xhr = new XMLHttpRequest();
     const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
@@ -37,10 +50,13 @@ export async function uploadToCloudinary(
 
       xhr.onload = () => {
         if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
+          const response = JSON.parse(xhr.responseText) as { secure_url?: string };
+          if (!response.secure_url) {
+            reject(new Error("Cloudinary did not return an image URL"));
+            return;
+          }
           resolve(response.secure_url);
         } else {
-          console.error("Cloudinary upload failed", xhr.responseText);
           reject(new Error("Failed to upload image to Cloudinary"));
         }
       };
@@ -50,7 +66,6 @@ export async function uploadToCloudinary(
       xhr.send(formData);
     });
   } catch (error) {
-    console.error("Error in uploadToCloudinary:", error);
     toast.error("Image upload failed.");
     throw error;
   }

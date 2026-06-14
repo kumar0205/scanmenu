@@ -22,7 +22,5 @@ export const db = initializeFirestore(app, {
 });
 export const storage = getStorage(app);
 export const analytics = getAnalytics(app);
-import { getFunctions } from 'firebase/functions';
-export const functions = getFunctions(app);
 
 export default app;

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   QrCode, LayoutDashboard, UtensilsCrossed, ClipboardList,
-  Grid3x3 as Grid3X3, Star, BarChart2, Crown, Settings, LogOut, Bell
+  Grid3x3 as Grid3X3, Star, Settings, LogOut, Bell, TrendingUp
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { signOut } from '../../firebase/auth';
@@ -31,8 +31,7 @@ export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: ()
     { to: '/admin/orders', icon: ClipboardList, label: t('nav.orders'), count: pendingCount },
     { to: '/admin/tables', icon: Grid3X3, label: t('nav.tables') },
     { to: '/admin/ratings', icon: Star, label: t('nav.ratings') },
-    { to: '/admin/analytics', icon: BarChart2, label: t('nav.analytics') },
-    { to: '/admin/subscription', icon: Crown, label: t('nav.subscription') },
+    { to: '/admin/analytics', icon: TrendingUp, label: t('nav.analytics') || 'Analytics' },
     { to: '/admin/settings', icon: Settings, label: t('nav.settings') },
   ];
 

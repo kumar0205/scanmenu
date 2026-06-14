@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings as SettingsIcon, Star, Gift, AlertTriangle, Loader2, Link2, ExternalLink, Droplets, Bell } from 'lucide-react';
+import { Settings as SettingsIcon, Star, Gift, AlertTriangle, Loader2, Link2, ExternalLink, Droplets, Bell, X, Plus, Globe } from 'lucide-react';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -16,9 +16,8 @@ type RewardSettings = Restaurant['rewards'];
 
 export default function Settings() {
   const { restaurant, restaurantId, setRestaurant, isDemo } = useAuthContext();
-  const { t } = useI18n();
+  const { t, language, setLanguage } = useI18n();
   const [name, setName] = useState(restaurant?.name ?? '');
-  const [address, setAddress] = useState(restaurant?.address ?? '');
   const [streetArea, setStreetArea] = useState(restaurant?.streetArea ?? '');
   const [town, setTown] = useState(restaurant?.town ?? '');
   const [stateVal, setStateVal] = useState(restaurant?.state ?? '');
@@ -29,22 +28,34 @@ export default function Settings() {
   const [rewards, setRewards] = useState<RewardSettings>(restaurant?.rewards ?? {
     active: false, discountPercent: 10, discountLabel: '10% Off', dessertLabel: 'Free Dessert', dessertDescription: 'On next order',
   });
-  const [waterBottle, setWaterBottle] = useState(restaurant?.waterBottle ?? { enabled: false, price: 20 });
+  const [waterBottle, setWaterBottle] = useState(restaurant?.waterBottle ?? {
+    enabled: false,
+    price: 20,
+    ml: 1000,
+    options: [
+      { id: '500ml', ml: '500ml', price: 20 },
+      { id: '1l', ml: '1L', price: 30 },
+      { id: '2l', ml: '2L', price: 45 }
+    ]
+  });
   const [callWaiter, setCallWaiter] = useState(restaurant?.callWaiter ?? { enabled: false });
   const [saving, setSaving] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [deleteModal, setDeleteModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const deletingAccount = false;
   const [deleteItemsModal, setDeleteItemsModal] = useState(false);
   const [deleteItemsConfirm, setDeleteItemsConfirm] = useState('');
   const [deletingItems, setDeletingItems] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const coverFilesRef = useRef<HTMLInputElement>(null);
+  const [coverImages, setCoverImages] = useState<string[]>(restaurant?.coverImages ?? (restaurant?.coverImageUrl ? [restaurant.coverImageUrl] : []));
+  const [coverUploadPct, setCoverUploadPct] = useState<number | null>(null);
   const menuUrl = `${window.location.origin}/${restaurant?.slug}`;
 
   useEffect(() => {
     if (restaurant) {
       setName(restaurant.name);
-      setAddress(restaurant.address);
       setStreetArea(restaurant.streetArea ?? '');
       setTown(restaurant.town ?? '');
       setStateVal(restaurant.state ?? '');
@@ -53,8 +64,18 @@ export default function Settings() {
       setUpiId(restaurant.upiId ?? '');
       setGoogleUrl(restaurant.googleReviewUrl);
       setRewards(restaurant.rewards);
-      if (restaurant.waterBottle) setWaterBottle(restaurant.waterBottle);
+      if (restaurant.waterBottle) {
+        const wb = { ...restaurant.waterBottle };
+        if (!wb.options || wb.options.length === 0) {
+          wb.options = [
+            { id: 'opt-' + Math.random().toString(36).substring(2, 7), ml: `${wb.ml ?? 1000}ml`, price: wb.price ?? 20 }
+          ];
+        }
+        setWaterBottle(wb);
+      }
       if (restaurant.callWaiter) setCallWaiter(restaurant.callWaiter);
+      if (restaurant.coverImages) setCoverImages(restaurant.coverImages);
+      else if (restaurant.coverImageUrl) setCoverImages([restaurant.coverImageUrl]);
     }
   }, [restaurant]);
 
@@ -109,6 +130,23 @@ export default function Settings() {
   }
 
   async function saveWaterBottle() {
+    if (waterBottle.enabled) {
+      const opts = waterBottle.options || [];
+      if (opts.length === 0) {
+        toast.error("At least one water bottle option is required when enabled");
+        return;
+      }
+      for (const opt of opts) {
+        if (!opt.ml.trim()) {
+          toast.error("Bottle size/volume cannot be empty");
+          return;
+        }
+        if (opt.price < 0) {
+          toast.error("Price cannot be negative");
+          return;
+        }
+      }
+    }
     if (!isDemo && restaurantId) {
       await updateRestaurant(restaurantId, { waterBottle });
     }
@@ -139,6 +177,48 @@ export default function Settings() {
     } finally { setUploadPct(null); }
   }
 
+  async function handleCoverImagesUpload(files: FileList) {
+    if (isDemo) {
+      toast.success('Photos upload skipped in demo mode');
+      return;
+    }
+    if (!restaurantId) return;
+    setCoverUploadPct(0);
+    try {
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const url = await uploadToCloudinary(files[i], 'covers', (pct) => {
+          setCoverUploadPct(Math.round(((i * 100) + pct) / files.length));
+        });
+        uploadedUrls.push(url);
+      }
+      const newImages = [...coverImages, ...uploadedUrls];
+      await updateRestaurant(restaurantId, { coverImages: newImages, coverImageUrl: newImages[0] });
+      setRestaurant({ ...restaurant!, coverImages: newImages, coverImageUrl: newImages[0] });
+      setCoverImages(newImages);
+      toast.success(t('generic.success'));
+    } catch {
+      toast.error('Failed to upload photos');
+    } finally {
+      setCoverUploadPct(null);
+      if (coverFilesRef.current) coverFilesRef.current.value = '';
+    }
+  }
+
+  async function removeCoverImage(index: number) {
+    if (isDemo) {
+      toast.success('Photo removal skipped in demo mode');
+      return;
+    }
+    if (!restaurantId) return;
+    const newImages = [...coverImages];
+    newImages.splice(index, 1);
+    await updateRestaurant(restaurantId, { coverImages: newImages, coverImageUrl: newImages[0] || '' });
+    setRestaurant({ ...restaurant!, coverImages: newImages, coverImageUrl: newImages[0] || '' });
+    setCoverImages(newImages);
+    toast.success('Photo removed');
+  }
+
   function copyLink() {
     navigator.clipboard.writeText(menuUrl);
     toast.success('Menu link copied!');
@@ -158,12 +238,18 @@ export default function Settings() {
       toast.success('All menu items deleted successfully!');
       setDeleteItemsModal(false);
       setDeleteItemsConfirm('');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('Failed to delete menu items');
     } finally {
       setDeletingItems(false);
     }
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteConfirm !== 'DELETE') return;
+    toast.error('Account deletion is currently disabled. Please contact support.');
+    setDeleteModal(false);
+    setDeleteConfirm('');
   }
 
   return (
@@ -224,6 +310,39 @@ export default function Settings() {
           </div>
         </section>
 
+        {/* Language Settings */}
+        <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+          <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
+            <Globe className="w-4 h-4 text-[#22c55e]" /> {t('settings.language')}
+          </h3>
+          <p className="text-[#52525b] text-xs mb-4">{t('settings.selectLanguage')}</p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { code: 'en', native: 'English' },
+              { code: 'te', native: 'తెలుగు' },
+              { code: 'hi', native: 'हिंदी' }
+            ].map((lang) => {
+              const isSelected = language === lang.code;
+              return (
+                <button
+                  key={lang.code}
+                  onClick={() => setLanguage(lang.code as 'en' | 'te' | 'hi')}
+                  className={`p-3 rounded-lg border text-left transition-all duration-200 flex flex-col gap-1 ${
+                    isSelected
+                      ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
+                      : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#a1a1aa] hover:border-[#52525b] hover:text-white'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">
+                    {lang.code}
+                  </span>
+                  <span className="text-sm font-bold">{lang.native}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Logo Upload */}
         <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
           <h3 className="text-white font-semibold mb-4">{t('settings.logo')}</h3>
@@ -248,6 +367,51 @@ export default function Settings() {
               <p className="text-[#52525b] text-xs mt-1">PNG, JPG up to 2MB</p>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); }} />
             </div>
+          </div>
+        </section>
+
+        {/* Restaurant Photos */}
+        <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+          <h3 className="text-white font-semibold mb-1">Restaurant Photos</h3>
+          <p className="text-[#52525b] text-xs mb-4">Upload photos of your restaurant to show on the menu header. You can upload multiple photos.</p>
+          
+          <div className="flex flex-wrap gap-4 mb-4">
+            {coverImages.map((url, idx) => (
+              <div key={idx} className="relative w-32 h-24 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] overflow-hidden group">
+                <img src={url} alt={`Cover ${idx}`} className="w-full h-full object-cover" />
+                <button 
+                  onClick={() => removeCoverImage(idx)}
+                  className="absolute top-1 right-1 bg-red-500/80 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            
+            <button
+              onClick={() => coverFilesRef.current?.click()}
+              className="w-32 h-24 rounded-lg border-2 border-dashed border-[#2a2a2a] hover:border-[#22c55e] flex flex-col items-center justify-center gap-1 text-[#52525b] hover:text-[#22c55e] transition-colors"
+            >
+              {coverUploadPct !== null ? (
+                <div className="flex flex-col items-center gap-1">
+                  <Loader2 className="w-5 h-5 animate-spin text-[#22c55e]" />
+                  <span className="text-xs">{coverUploadPct}%</span>
+                </div>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5" />
+                  <span className="text-xs font-medium">Add Photos</span>
+                </>
+              )}
+            </button>
+            <input 
+              ref={coverFilesRef} 
+              type="file" 
+              accept="image/*" 
+              multiple 
+              className="hidden" 
+              onChange={e => { if (e.target.files?.length) handleCoverImagesUpload(e.target.files); }} 
+            />
           </div>
         </section>
 
@@ -310,8 +474,60 @@ export default function Settings() {
           </div>
           <p className="text-[#52525b] text-xs mb-4">Toggle the "Request Water" button on customer menu. When enabled, customers can request water bottles directly from their table.</p>
           {waterBottle.enabled && (
-            <div className="mb-4">
-              <Input label="Water Bottle Price" type="number" value={String(waterBottle.price)} onChange={e => setWaterBottle(w => ({ ...w, price: Number(e.target.value) }))} suffix={restaurant?.currency ?? '₹'} />
+            <div className="space-y-4 mb-4 border border-[#2a2a2a] rounded-xl p-4 bg-[#161616]">
+              <span className="text-xs font-semibold text-[#a1a1aa] uppercase tracking-wider block">Bottle Options & Pricing</span>
+              <div className="space-y-3">
+                {(waterBottle.options || []).map((opt, idx) => (
+                  <div key={opt.id || idx} className="flex gap-3 items-end">
+                    <div className="flex-1">
+                      <Input 
+                        label="Bottle Size / Volume" 
+                        placeholder="e.g. 500ml, 1L" 
+                        value={opt.ml} 
+                        onChange={e => {
+                          const updated = [...(waterBottle.options || [])];
+                          updated[idx] = { ...updated[idx], ml: e.target.value };
+                          setWaterBottle(w => ({ ...w, options: updated }));
+                        }} 
+                      />
+                    </div>
+                    <div className="w-32">
+                      <Input 
+                        label="Price" 
+                        type="number" 
+                        placeholder="20" 
+                        value={opt.price} 
+                        onChange={e => {
+                          const updated = [...(waterBottle.options || [])];
+                          updated[idx] = { ...updated[idx], price: Number(e.target.value) || 0 };
+                          setWaterBottle(w => ({ ...w, options: updated }));
+                        }} 
+                        suffix={restaurant?.currency ?? '₹'}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (waterBottle.options || []).filter((_, i) => i !== idx);
+                        setWaterBottle(w => ({ ...w, options: updated }));
+                      }}
+                      className="text-[#ef4444] hover:text-red-400 text-xs pb-3 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const newOpt = { id: 'opt-' + Math.random().toString(36).substring(2, 7), ml: '', price: 0 };
+                  setWaterBottle(w => ({ ...w, options: [...(w.options || []), newOpt] }));
+                }}
+                className="text-xs font-semibold text-[#22c55e] hover:underline flex items-center gap-1 mt-2"
+              >
+                + Add Water Option
+              </button>
             </div>
           )}
           <Button onClick={saveWaterBottle}>{t('generic.save')}</Button>
@@ -357,7 +573,7 @@ export default function Settings() {
           This will permanently delete your restaurant, menu, orders, and all data. Type <strong className="text-white">DELETE</strong> to confirm.
         </p>
         <Input placeholder="Type DELETE" value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} />
-        <Button variant="danger" fullWidth className="mt-4" disabled={deleteConfirm !== 'DELETE'}>
+        <Button variant="danger" fullWidth className="mt-4" disabled={deleteConfirm !== 'DELETE'} loading={deletingAccount} onClick={handleDeleteAccount}>
           Delete Everything
         </Button>
       </Modal>

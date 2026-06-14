@@ -1,24 +1,17 @@
-import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Search, ShoppingBag, Plus, Minus, X, Utensils, Home, Star, Clock, MapPin, Phone, ArrowLeft, History, Flame, Leaf, Sparkles, ChevronRight, ArrowUpDown, Menu } from 'lucide-react';
-import { Timestamp, doc, setDoc, onSnapshot, collection, serverTimestamp } from 'firebase/firestore';
+import { Search, ShoppingBag, Plus, Minus, X, Utensils, Home, Star, Clock, MapPin, Phone, History, Flame, Leaf, Sparkles, ChevronRight, ArrowUpDown, Menu, Loader2 } from 'lucide-react';
+import { Timestamp, doc, setDoc, onSnapshot, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { useRestaurant } from '../../hooks/useRestaurant';
 import { useMenu } from '../../hooks/useMenu';
 import { createWaterRequest, getTableById } from '../../firebase/db';
 import { db, auth } from '../../firebase/config';
 import { signInAnonymously } from 'firebase/auth';
-import { openWhatsApp, buildOrderMessage } from '../../utils/whatsapp';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase/config';
 import { formatCurrency } from '../../utils/formatters';
-import type { MenuItem, OrderItem } from '../../types';
+import type { MenuItem, Order } from '../../types';
 import { useCartStore } from '../../store/useCartStore';
-import { optimizeCloudinaryUrl } from '../../utils/cloudinary';
 import { BlurImage } from '../../components/ui/BlurImage';
-
-type CartItem = OrderItem & { imageUrl: string };
-
 let top3SetCache: Set<string> = new Set();
 function updateTop3Cache(allItems: MenuItem[]) {
   const scored = allItems.map(item => {
@@ -28,7 +21,7 @@ function updateTop3Cache(allItems: MenuItem[]) {
   scored.sort((a, b) => b.score - a.score);
   top3SetCache = new Set(scored.slice(0, 3).map(x => x.id));
 }
-function isItemTopRated(item: MenuItem): boolean {
+export function isItemTopRated(item: MenuItem): boolean {
   return top3SetCache.has(item.id);
 }
 
@@ -49,12 +42,13 @@ export default function MenuPage() {
 
   const { restaurant, loading: rLoading, notFound } = useRestaurant(restaurantSlug);
 
+  const hasFirebase = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'placeholder';
+
   useEffect(() => {
     async function resolveTable() {
       if (!queryTable || !restaurant?.id) return;
       if (queryTable === tableId || queryTable === tableNumber) return; // Already resolved
       
-      const hasFirebase = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'placeholder';
       if (hasFirebase) {
         try {
           const tableData = await getTableById(restaurant.id, queryTable);
@@ -76,14 +70,13 @@ export default function MenuPage() {
       }
     }
     resolveTable();
-  }, [queryTable, restaurant?.id, tableId, tableNumber, setTableNumber, setTableId]);
+  }, [queryTable, restaurant?.id, tableId, tableNumber, setTableNumber, setTableId, hasFirebase]);
 
   useEffect(() => {
-    const hasFirebase = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'placeholder';
     if (hasFirebase) {
       signInAnonymously(auth).catch(console.error);
     }
-  }, []);
+  }, [hasFirebase]);
   const { categories, items, loading: mLoading } = useMenu(restaurant?.id ?? null);
 
   useEffect(() => {
@@ -95,17 +88,27 @@ export default function MenuPage() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [showSpecialRequest, setShowSpecialRequest] = useState(false);
   const [placing, setPlacing] = useState(false);
-  const [activeOrders, setActiveOrders] = useState<any[]>([]);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [requestCooldown, setRequestCooldown] = useState(0);
+
+  // States for dynamic Water options modal
+  const [waterModalOpen, setWaterModalOpen] = useState(false);
+  const [selectedWaterOptId, setSelectedWaterOptId] = useState<string>('');
+  const [waterQty, setWaterQty] = useState(1);
+
+  // States for Add Extra Items modal
+  const [selectedOrderForExtra, setSelectedOrderForExtra] = useState<Order | null>(null);
+  const [extraItemsCart, setExtraItemsCart] = useState<Record<string, number>>({});
+  const [extraSearchQuery, setExtraSearchQuery] = useState('');
+  const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
 
   const [vegFilter, setVegFilter] = useState<'all' | 'veg' | 'nonveg'>('all');
   const [popularFilter, setPopularFilter] = useState(false);
   const [priceSort, setPriceSort] = useState<'none' | 'asc' | 'desc'>('none');
   const [headerShadow, setHeaderShadow] = useState(false);
 
-  const cartBarRef = useRef<HTMLDivElement>(null);
-  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const categoryRefs = useRef<Record<string, HTMLElement | null>>({});
   const categoryTabsRef = useRef<HTMLDivElement | null>(null);
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
@@ -143,25 +146,25 @@ export default function MenuPage() {
     }
     if (filtered.length === 0) return;
     const unsubs: Array<() => void> = [];
-    const activeDataMap: Record<string, any> = {};
+    const activeDataMap: Record<string, Order> = {};
     filtered.forEach(({ sessionId, orderId }) => {
       const docRef = doc(db, 'restaurants', restaurant.id, 'orders', orderId);
       const unsub = onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
-          const orderData = docSnap.data() as any;
+          const orderData = docSnap.data() as Order;
           if (orderData.status === 'completed' || orderData.status === 'cancelled') {
-            const currentStored = JSON.parse(localStorage.getItem('scanmenu_active_orders') || '[]');
-            const filteredStored = currentStored.filter((o: any) => o.orderId !== orderId);
+            const currentStored: Array<{ orderId: string }> = JSON.parse(localStorage.getItem('scanmenu_active_orders') || '[]');
+            const filteredStored = currentStored.filter(o => o.orderId !== orderId);
             localStorage.setItem('scanmenu_active_orders', JSON.stringify(filteredStored));
             if (filteredStored.length === 0) localStorage.removeItem('scanmenu_locked_table');
             delete activeDataMap[orderId];
           } else {
-            activeDataMap[orderId] = { id: orderId, sessionId, ...orderData };
+            activeDataMap[orderId] = { id: orderId, sessionId, ...orderData } as Order;
           }
           setActiveOrders(Object.values(activeDataMap).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)));
         } else {
-          const currentStored = JSON.parse(localStorage.getItem('scanmenu_active_orders') || '[]');
-          const filteredStored = currentStored.filter((o: any) => o.orderId !== orderId);
+          const currentStored: Array<{ orderId: string }> = JSON.parse(localStorage.getItem('scanmenu_active_orders') || '[]');
+          const filteredStored = currentStored.filter(o => o.orderId !== orderId);
           localStorage.setItem('scanmenu_active_orders', JSON.stringify(filteredStored));
           if (filteredStored.length === 0) localStorage.removeItem('scanmenu_locked_table');
           delete activeDataMap[orderId];
@@ -232,11 +235,24 @@ export default function MenuPage() {
     if (priceSort === 'desc') return b.price - a.price;
     return 0;
   }), [activeItems, vegFilter, popularFilter, search, priceSort]);
+  const waterOptions = useMemo(() => {
+    if (!restaurant?.waterBottle?.enabled) return [];
+    if (restaurant.waterBottle.options && restaurant.waterBottle.options.length > 0) {
+      return restaurant.waterBottle.options;
+    }
+    const legacyMl = restaurant.waterBottle.ml ? `${restaurant.waterBottle.ml}ml` : '1L';
+    const legacyPrice = restaurant.waterBottle.price ?? 20;
+    return [{ id: 'legacy', ml: legacyMl, price: legacyPrice }];
+  }, [restaurant]);
 
-
+  useEffect(() => {
+    if (waterOptions.length > 0 && !selectedWaterOptId) {
+      setSelectedWaterOptId(waterOptions[0].id);
+    }
+  }, [waterOptions, selectedWaterOptId]);
 
   function getQty(itemId: string) {
-    return cart.find(c => c.itemId === itemId)?.qty ?? 0;
+    return cart.filter(c => c.itemId === itemId || c.itemId.startsWith(itemId + '-combo-')).reduce((s, i) => s + i.qty, 0);
   }
 
   function requestWaterBottle() {
@@ -244,27 +260,12 @@ export default function MenuPage() {
       toast.error(`Please wait ${requestCooldown} seconds before requesting again.`);
       return;
     }
-    let finalTable = tableNumber;
-    if (!finalTable) {
-      const inputTable = window.prompt("Enter your table number (or leave empty for Takeaway):");
-      if (inputTable === null) return;
-      finalTable = inputTable.trim() || 'Takeaway';
-      if (finalTable !== 'Takeaway') {
-        setTableNumber(finalTable);
-      }
+    if (waterOptions.length === 0) {
+      toast.error("Water bottle requests are not configured.");
+      return;
     }
-    const qtyStr = window.prompt("How many water bottles?", "1");
-    if (qtyStr) {
-      const qty = parseInt(qtyStr, 10);
-      if (qty > 0) {
-        addToCart({ id: 'addon-water-bottle', name: 'Mineral Water Bottle', price: 20, isVeg: true, imageUrl: '', qty }); // Needs slight adjustment since addToCart expects MenuItem shape, wait I will just pass the basic required fields. Actually addToCart expects id.
-        if (hasFirebase && restaurant?.id) {
-          createWaterRequest(restaurant.id, finalTable, qty, 'water').catch(console.error);
-          setRequestCooldown(60);
-        }
-        toast.success(`Added ${qty} water bottle(s) to cart`);
-      }
-    }
+    setWaterQty(1);
+    setWaterModalOpen(true);
   }
 
   function callWaiter() {
@@ -281,7 +282,6 @@ export default function MenuPage() {
         setTableNumber(finalTable);
       }
     }
-    const hasFirebase = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'placeholder';
     if (hasFirebase && restaurant?.id) {
       createWaterRequest(restaurant.id, finalTable, 1, 'waiter')
         .then(() => {
@@ -294,81 +294,144 @@ export default function MenuPage() {
     }
   }
 
-  async function placeOrder() {
-    if (!restaurant) return;
+  async function handleAddExtraItemsToOrder() {
+    if (!restaurant || !selectedOrderForExtra || isUpdatingOrder) return;
     
-    const finalCustomerName = customerName.trim() || 'User';
-    setPlacing(true);
+    const selectedItemIds = Object.keys(extraItemsCart).filter(id => extraItemsCart[id] > 0);
+    if (selectedItemIds.length === 0) {
+      toast.error('Please select at least one item');
+      return;
+    }
+    
+    setIsUpdatingOrder(true);
     try {
-      const hasFirebase = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'placeholder';
-      const sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
-      localStorage.setItem('scanmenu_session', sessionId);
-      let orderId = `demo-${Date.now()}`;
-
-      if (hasFirebase) {
-        const submitOrder = httpsCallable(functions, 'submitOrder');
-        const strippedCart = cart.map(item => ({ itemId: item.itemId, qty: item.qty }));
+      const updatedItems = [...selectedOrderForExtra.items.map(item => ({ ...item }))];
+      
+      for (const itemId of selectedItemIds) {
+        const qtyToAdd = extraItemsCart[itemId];
         
-        try {
-          const result = await submitOrder({
-            restaurantId: restaurant.id,
-            tableId: tableId || tableNumber,
-            tableNumber: tableNumber,
-            customerName: finalCustomerName,
-            note,
-            items: strippedCart
-          });
-          const data = result.data as any;
-          orderId = data.orderId;
-          const serverSessionId = data.sessionId;
-          localStorage.setItem('scanmenu_session', serverSessionId);
-        } catch (error) {
-          console.error("Cloud function error:", error);
-          
-          if (import.meta.env.DEV) {
-            console.warn("Bypassing Cloud Function for local development.");
+        const existingExtra = updatedItems.find(i => i.itemId === itemId && i.isExtra);
+        if (existingExtra) {
+          existingExtra.qty += qtyToAdd;
+        } else {
+          if (itemId.includes('-combo-')) {
+            const parts = itemId.split('-combo-');
+            const baseId = parts[0];
+            const paxStr = parts[1];
+            const pax = parseInt(paxStr, 10);
             
-            const finalTotal = Math.round(cartTotal * 1.05 * 100) / 100;
-            const orderRef = doc(collection(db, 'restaurants', restaurant.id, 'orders'));
-            orderId = orderRef.id;
+            const menuItem = items.find(i => i.id === baseId);
+            if (!menuItem) continue;
+            const cp = menuItem.comboPrices?.find(c => c.persons === pax);
+            if (!cp) continue;
             
-            await setDoc(orderRef, {
-              customerId: auth.currentUser?.uid || "anonymous",
-              customerName: finalCustomerName,
-              tableId: tableId || tableNumber,
-              tableNumber,
-              items: cart,
-              totalAmount: finalTotal,
-              status: "pending",
-              note: note || "",
-              ratingSubmitted: false,
-              paymentStatus: "unpaid",
-              sessionId,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-            
-            const sessionRef = doc(db, 'sessions', sessionId);
-            await setDoc(sessionRef, {
-              restaurantId: restaurant.id,
-              restaurantName: restaurant.name,
-              restaurantSlug: restaurant.slug,
-              tableNumber,
-              customerName: finalCustomerName,
-              items: cart,
-              totalAmount: finalTotal,
-              upiId: restaurant.upiId || "",
-              status: "pending_payment",
-              orderId,
-              expiresAt: serverTimestamp(),
+            updatedItems.push({
+              itemId: itemId,
+              name: `${menuItem.name} (${cp.persons} Person${cp.persons > 1 ? 's' : ''})`,
+              price: cp.price,
+              qty: qtyToAdd,
+              isVeg: menuItem.isVeg,
+              isExtra: true
             });
           } else {
-            toast.error("Failed to verify order pricing on server.");
-            setPlacing(false);
-            return;
+            const menuItem = items.find(i => i.id === itemId);
+            if (!menuItem) continue;
+            updatedItems.push({
+              itemId: menuItem.id,
+              name: menuItem.name,
+              price: menuItem.price,
+              qty: qtyToAdd,
+              isVeg: menuItem.isVeg,
+              isExtra: true
+            });
           }
         }
       }
+      
+      const newSubtotal = updatedItems.reduce((acc, item) => acc + item.price * item.qty, 0);
+      const newTotal = Math.round(newSubtotal * 1.05 * 100) / 100;
+      
+      if (hasFirebase) {
+        const orderRef = doc(db, 'restaurants', restaurant.id, 'orders', selectedOrderForExtra.id);
+        await updateDoc(orderRef, {
+          items: updatedItems,
+          totalAmount: newTotal,
+          updatedAt: Timestamp.now()
+        });
+        
+        if (selectedOrderForExtra.sessionId) {
+          const sessionRef = doc(db, 'sessions', selectedOrderForExtra.sessionId);
+          await updateDoc(sessionRef, {
+            items: updatedItems.map(item => ({
+              name: item.name,
+              price: item.price,
+              qty: item.qty
+            })),
+            totalAmount: newTotal
+          });
+        }
+      }
+
+      toast.success('Extra items added successfully!');
+      setSelectedOrderForExtra(null);
+      setExtraItemsCart({});
+      setExtraSearchQuery('');
+    } catch (error: unknown) {
+      console.error('Failed to add extra items:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to add extra items: ${msg}`);
+    } finally {
+      setIsUpdatingOrder(false);
+    }
+  }
+
+  async function placeOrder() {
+    if (!restaurant) return;
+
+    const finalCustomerName = customerName.trim() || 'User';
+    setPlacing(true);
+    try {
+      const sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+      const finalTotal = Math.round(cartTotal * 100) / 100;
+      const orderRef = doc(collection(db, 'restaurants', restaurant.id, 'orders'));
+      const orderId = orderRef.id;
+
+      await setDoc(orderRef, {
+        customerId: auth.currentUser?.uid || 'anonymous',
+        customerName: finalCustomerName,
+        tableId: tableId || tableNumber,
+        tableNumber,
+        items: cart,
+        totalAmount: finalTotal,
+        status: 'pending',
+        note: note || '',
+        ratingSubmitted: false,
+        paymentStatus: 'unpaid',
+        sessionId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      const sessionRef = doc(db, 'sessions', sessionId);
+      await setDoc(sessionRef, {
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+        restaurantSlug: restaurant.slug,
+        tableNumber,
+        customerName: finalCustomerName,
+        items: cart,
+        totalAmount: finalTotal,
+        upiId: restaurant.upiId || '',
+        status: 'pending_payment',
+        orderId,
+        expiresAt: new Timestamp(
+          Math.floor((Date.now() + 60 * 60 * 1000) / 1000),
+          0
+        ),
+      });
 
       const activeOrdersList = JSON.parse(localStorage.getItem('scanmenu_active_orders') || '[]');
       activeOrdersList.push({ sessionId, orderId, tableNumber });
@@ -381,6 +444,9 @@ export default function MenuPage() {
       setCartOpen(false);
       toast.success('Order placed!');
       setActiveTab('history');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to place order';
+      toast.error(msg);
     } finally {
       setPlacing(false);
     }
@@ -768,14 +834,18 @@ export default function MenuPage() {
                             order.status === 'preparing' ? 'In Kitchen' :
                               order.status === 'ready' ? 'Ready' : order.status}
                         </span>
-                        <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${order.paymentStatus === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}>
-                          {order.paymentStatus === 'paid' ? 'Paid' : 'Unpaid'}
+                        <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${
+                          order.paymentStatus === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                          order.paymentStatus === 'verifying' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                          'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}>
+                          {order.paymentStatus === 'paid' ? 'Paid' :
+                           order.paymentStatus === 'verifying' ? 'Verifying' : 'Unpaid'}
                         </span>
                       </div>
                     </div>
                     <div className="text-xs text-stone-600 border-t border-stone-100 pt-2.5 space-y-1.5">
-                      {order.items.map((item: any, idx: number) => (
+                      {order.items.map((item: import('../../types').OrderItem, idx: number) => (
                         <div key={idx} className="flex justify-between">
                           <span>{item.name} <span className="opacity-70 font-semibold">x{item.qty}</span></span>
                           <span className="font-semibold text-stone-800">{formatCurrency(item.price * item.qty, restaurant?.currency ?? '₹')}</span>
@@ -786,9 +856,35 @@ export default function MenuPage() {
                         <span>{formatCurrency(order.totalAmount, restaurant?.currency ?? '₹')}</span>
                       </div>
                     </div>
-                    {order.paymentStatus !== 'paid' && (
-                      <a href={`/pay/${order.sessionId}`} className="block text-center bg-[#c86214] hover:bg-[#b05612] text-white font-bold py-3 rounded-lg text-sm transition shadow-sm mt-4">
-                        Proceed to Pay / Checkout
+                    {order.paymentStatus === 'unpaid' && (
+                      <div className="grid grid-cols-2 gap-2 mt-4">
+                        <button
+                          onClick={() => {
+                            setSelectedOrderForExtra(order);
+                            setExtraItemsCart({});
+                            setExtraSearchQuery('');
+                          }}
+                          className="text-center bg-stone-100 hover:bg-stone-200 text-stone-850 font-bold py-3 px-2 rounded-lg text-xs transition shadow-sm"
+                        >
+                          + Add Extra Items
+                        </button>
+                        <a href={`/pay/${order.sessionId}`} className="block text-center bg-[#c86214] hover:bg-[#b05612] text-white font-bold py-3 px-2 rounded-lg text-xs transition shadow-sm flex items-center justify-center">
+                          Pay / Checkout
+                        </a>
+                      </div>
+                    )}
+                    {order.paymentStatus === 'verifying' && (
+                      <div className="text-center bg-blue-50 text-blue-750 font-bold py-3 rounded-lg text-xs border border-blue-200 mt-4">
+                        Awaiting Admin Confirmation
+                      </div>
+                    )}
+                    {order.paymentStatus === 'paid' && !order.ratingSubmitted && (
+                      <a
+                        href={`/${restaurantSlug}/rate/${order.id}`}
+                        className="block text-center bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-lg text-xs transition shadow-sm mt-4 flex items-center justify-center gap-1.5"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-white text-white" />
+                        Leave a Rating
                       </a>
                     )}
                   </div>
@@ -837,13 +933,9 @@ export default function MenuPage() {
                       <div className="flex flex-col items-end gap-2 shrink-0">
                         <span className="text-[13px] font-bold text-stone-900">{formatCurrency(item.price * item.qty, restaurant?.currency ?? '₹')}</span>
                         <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-full p-0.5 min-h-[32px]">
-                          {item.itemId !== 'addon-water-bottle' && (
-                            <button onClick={() => removeFromCart(item.itemId)} className="w-7 h-7 rounded-full bg-stone-50 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"><Minus className="h-3 w-3" /></button>
-                          )}
+                          <button onClick={() => removeFromCart(item.itemId)} className="w-7 h-7 rounded-full bg-stone-50 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"><Minus className="h-3 w-3" /></button>
                           <span className="w-4 text-center text-xs font-bold text-stone-900">{item.qty}</span>
-                          {item.itemId !== 'addon-water-bottle' && (
-                            <button onClick={() => { const mi = items.find(i => i.id === item.itemId); if (mi) addToCart(mi); }} className="w-7 h-7 rounded-full bg-stone-900 flex items-center justify-center text-white hover:bg-stone-800 transition-colors"><Plus className="h-3 w-3" /></button>
-                          )}
+                          <button onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })} className="w-7 h-7 rounded-full bg-stone-900 flex items-center justify-center text-white hover:bg-stone-800 transition-colors"><Plus className="h-3 w-3" /></button>
                         </div>
                       </div>
                     </div>
@@ -941,23 +1033,19 @@ export default function MenuPage() {
                     </div>
                     <div className="flex items-center gap-4 shrink-0">
                       <div className="flex items-center gap-3">
-                        {item.itemId !== 'addon-water-bottle' && (
-                          <button
-                            onClick={() => removeFromCart(item.itemId)}
-                            className="h-[26px] w-[26px] rounded-full bg-stone-100 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => removeFromCart(item.itemId)}
+                          className="h-[26px] w-[26px] rounded-full bg-stone-100 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
                         <span className="w-3 text-center text-[13px] font-bold text-stone-900">{item.qty}</span>
-                        {item.itemId !== 'addon-water-bottle' && (
-                          <button
-                            onClick={() => { const mi = items.find(i => i.id === item.itemId); if (mi) addToCart(mi); }}
-                            className="h-[26px] w-[26px] rounded-full bg-[#1a1814] flex items-center justify-center text-white hover:bg-black transition-colors"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })}
+                          className="h-[26px] w-[26px] rounded-full bg-[#1a1814] flex items-center justify-center text-white hover:bg-black transition-colors"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
                       </div>
                       <span className="text-[13px] font-bold text-stone-900 w-[45px] text-right">
                         {formatCurrency(item.price * item.qty, restaurant?.currency ?? '₹')}
@@ -1153,6 +1241,233 @@ export default function MenuPage() {
             </div>
           </div>
         )}
+
+        {/* ===== WATER REQUEST MODAL ===== */}
+        {waterModalOpen && (
+          <div className="fixed inset-0 z-[80] flex justify-center items-end">
+            <div className="absolute inset-0 bg-stone-950/60 backdrop-blur-sm" onClick={() => setWaterModalOpen(false)} />
+            <div className="relative w-full max-h-[75dvh] max-w-[480px] bg-white shadow-2xl flex flex-col z-10 rounded-t-3xl overflow-hidden animate-[slideUp_0.3s_ease-out]">
+              <div className="bg-white shrink-0 border-b border-stone-100 pt-3 pb-3">
+                <div className="w-10 h-1.5 bg-stone-200 rounded-full mx-auto mb-3" />
+                <div className="flex items-center justify-between px-5">
+                  <h3 className="text-xl font-bold text-stone-900 font-display flex items-center gap-2">
+                    💧 Add Water Bottle
+                  </h3>
+                  <button onClick={() => setWaterModalOpen(false)} className="h-8 w-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="px-5 py-4 flex-1 overflow-y-auto space-y-4">
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Select Option</p>
+                  <div className="flex flex-col gap-2">
+                    {waterOptions.map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setSelectedWaterOptId(opt.id)}
+                        className={`flex items-center justify-between p-3 rounded-xl border-2 text-left transition-all ${
+                          selectedWaterOptId === opt.id ? 'border-blue-500 bg-blue-50' : 'border-stone-100 hover:border-stone-200'
+                        }`}
+                      >
+                        <span className={`font-bold ${selectedWaterOptId === opt.id ? 'text-blue-700' : 'text-stone-800'}`}>{opt.ml} Water Bottle</span>
+                        <span className={`font-semibold ${selectedWaterOptId === opt.id ? 'text-blue-600' : 'text-stone-500'}`}>{formatCurrency(opt.price, restaurant?.currency ?? '₹')}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="space-y-2 pt-2 border-t border-stone-100">
+                  <p className="text-xs font-bold text-stone-500 uppercase tracking-wider">Quantity</p>
+                  <div className="flex items-center gap-4 bg-stone-50 border border-stone-200 rounded-2xl p-2 w-fit">
+                    <button
+                      onClick={() => setWaterQty(Math.max(1, waterQty - 1))}
+                      className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-stone-600 hover:bg-stone-100"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="w-8 text-center font-bold text-lg text-stone-900">{waterQty}</span>
+                    <button
+                      onClick={() => setWaterQty(waterQty + 1)}
+                      className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-stone-600 hover:bg-stone-100"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="p-5 border-t border-stone-100 bg-white shrink-0">
+                <button
+                  onClick={() => {
+                    const opt = waterOptions.find(o => o.id === selectedWaterOptId);
+                    if (opt) {
+                      addToCart({
+                        id: `water-bottle-${opt.id}`,
+                        name: `Water Bottle (${opt.ml})`,
+                        price: opt.price,
+                        qty: waterQty,
+                        isVeg: true,
+                        imageUrl: ''
+                      });
+                      toast.success(`Added ${waterQty}x Water Bottle (${opt.ml}) to cart`);
+                      setWaterModalOpen(false);
+                      setCartOpen(true);
+                    }
+                  }}
+                  className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
+                >
+                  Add to Cart
+                  <span className="bg-white/20 px-2 py-0.5 rounded text-xs">
+                    {formatCurrency((waterOptions.find(o => o.id === selectedWaterOptId)?.price ?? 0) * waterQty, restaurant?.currency ?? '₹')}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== ADD EXTRA ITEMS DRAWER ===== */}
+        {selectedOrderForExtra && (
+          <div className="fixed inset-0 z-[80] flex justify-center items-end">
+            <div className="absolute inset-0 bg-stone-950/60 backdrop-blur-sm" onClick={() => !isUpdatingOrder && setSelectedOrderForExtra(null)} />
+            <div className="relative w-full h-[85dvh] max-w-[480px] bg-stone-50 shadow-2xl flex flex-col z-10 rounded-t-3xl overflow-hidden animate-[slideUp_0.3s_ease-out]">
+              <div className="bg-white shrink-0 border-b border-stone-200 pt-3 pb-3">
+                <div className="w-10 h-1.5 bg-stone-200 rounded-full mx-auto mb-3" />
+                <div className="flex items-center justify-between px-5 mb-3">
+                  <div>
+                    <h3 className="text-xl font-bold text-stone-900 font-display leading-tight">Add Extra Items</h3>
+                    <p className="text-xs text-stone-500 font-medium">To Order #{selectedOrderForExtra.id.slice(0, 8)}</p>
+                  </div>
+                  <button 
+                    onClick={() => !isUpdatingOrder && setSelectedOrderForExtra(null)} 
+                    disabled={isUpdatingOrder}
+                    className="h-8 w-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200 disabled:opacity-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                
+                {/* Search Bar for Extra Items */}
+                <div className="px-5">
+                  <div className="relative flex-1 rounded-xl bg-stone-100 border border-stone-200 focus-within:bg-white focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-400/20 transition-all">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                    <input
+                      value={extraSearchQuery}
+                      onChange={e => setExtraSearchQuery(e.target.value)}
+                      placeholder="Search for extra items..."
+                      className="w-full bg-transparent rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none text-stone-900 placeholder:text-stone-400"
+                    />
+                    {extraSearchQuery && (
+                      <button onClick={() => setExtraSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-stone-50">
+                {activeItems
+                  .filter(i => extraSearchQuery ? i.name.toLowerCase().includes(extraSearchQuery.toLowerCase()) : true)
+                  .map(item => {
+                    if (item.isCombo && item.comboPrices && item.comboPrices.length > 0) {
+                      return item.comboPrices.map(cp => {
+                        const comboId = `${item.id}-combo-${cp.persons}p`;
+                        const currentQty = extraItemsCart[comboId] || 0;
+                        return (
+                          <div key={comboId} className="flex items-center justify-between p-3 bg-white border border-stone-200 rounded-xl shadow-sm">
+                            <div className="flex items-start gap-2 pr-2">
+                              <span className={`mt-1 w-2.5 h-2.5 rounded-sm shrink-0 border flex items-center justify-center ${item.isVeg ? 'border-green-600' : 'border-red-600'}`}>
+                                <span className={`w-1 h-1 rounded-full ${item.isVeg ? 'bg-green-600' : 'bg-red-600'}`} />
+                              </span>
+                              <div>
+                                <p className="font-bold text-sm text-stone-900 leading-tight">{item.name} <span className="text-stone-500 font-medium">({cp.persons} Pax)</span></p>
+                                <p className="text-xs font-semibold text-stone-500 mt-0.5">{formatCurrency(cp.price, restaurant?.currency ?? '₹')}</p>
+                              </div>
+                            </div>
+                            {currentQty === 0 ? (
+                              <button
+                                onClick={() => setExtraItemsCart(prev => ({ ...prev, [comboId]: 1 }))}
+                                className="px-4 py-1.5 rounded-full border border-stone-300 text-stone-850 hover:bg-stone-50 font-bold text-xs shrink-0"
+                              >
+                                + Add
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-3 bg-stone-50 border border-stone-200 rounded-full px-2 py-1 shrink-0">
+                                <button
+                                  onClick={() => setExtraItemsCart(prev => ({ ...prev, [comboId]: prev[comboId] - 1 }))}
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-stone-600 hover:bg-stone-200"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className="font-bold text-stone-800 text-xs min-w-[16px] text-center">{currentQty}</span>
+                                <button
+                                  onClick={() => setExtraItemsCart(prev => ({ ...prev, [comboId]: prev[comboId] + 1 }))}
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-stone-800 hover:bg-stone-200"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    } else {
+                      const currentQty = extraItemsCart[item.id] || 0;
+                      return (
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-white border border-stone-200 rounded-xl shadow-sm">
+                          <div className="flex items-start gap-2 pr-2">
+                            <span className={`mt-1 w-2.5 h-2.5 rounded-sm shrink-0 border flex items-center justify-center ${item.isVeg ? 'border-green-600' : 'border-red-600'}`}>
+                              <span className={`w-1 h-1 rounded-full ${item.isVeg ? 'bg-green-600' : 'bg-red-600'}`} />
+                            </span>
+                            <div>
+                              <p className="font-bold text-sm text-stone-900 leading-tight">{item.name}</p>
+                              <p className="text-xs font-semibold text-stone-500 mt-0.5">{formatCurrency(item.price, restaurant?.currency ?? '₹')}</p>
+                            </div>
+                          </div>
+                          {currentQty === 0 ? (
+                            <button
+                              onClick={() => setExtraItemsCart(prev => ({ ...prev, [item.id]: 1 }))}
+                              className="px-4 py-1.5 rounded-full border border-stone-300 text-stone-850 hover:bg-stone-50 font-bold text-xs shrink-0"
+                            >
+                              + Add
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-3 bg-stone-50 border border-stone-200 rounded-full px-2 py-1 shrink-0">
+                              <button
+                                onClick={() => setExtraItemsCart(prev => ({ ...prev, [item.id]: prev[item.id] - 1 }))}
+                                className="w-6 h-6 rounded-full flex items-center justify-center text-stone-600 hover:bg-stone-200"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="font-bold text-stone-800 text-xs min-w-[16px] text-center">{currentQty}</span>
+                              <button
+                                onClick={() => setExtraItemsCart(prev => ({ ...prev, [item.id]: prev[item.id] + 1 }))}
+                                className="w-6 h-6 rounded-full flex items-center justify-center text-stone-800 hover:bg-stone-200"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                  })}
+              </div>
+
+              <div className="p-4 border-t border-stone-200 bg-white shrink-0">
+                <button
+                  onClick={handleAddExtraItemsToOrder}
+                  disabled={isUpdatingOrder || Object.values(extraItemsCart).every(q => q === 0)}
+                  className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isUpdatingOrder && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Confirm Extra Items
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -1182,6 +1497,9 @@ const ItemCard = memo(function ItemCard({
   currency: string;
 }) {
   const isTop = isItemTopRated(item);
+  const cart = useCartStore(state => state.cart);
+  const addToCart = useCartStore(state => state.addToCart);
+  const removeFromCart = useCartStore(state => state.removeFromCart);
 
   return (
     <article className={`bg-white rounded-xl border border-stone-200 p-3 flex gap-3 text-left ${!item.isAvailable ? 'opacity-65' : ''}`}>
@@ -1204,9 +1522,69 @@ const ItemCard = memo(function ItemCard({
             )}
           </div>
           <h3 className="text-base font-bold text-stone-900 leading-tight mb-1">{item.name}</h3>
-          <p className="text-sm font-semibold text-stone-900 mb-1">{formatCurrency(item.price, currency)}</p>
+          {!item.isCombo && (
+            <p className="text-sm font-semibold text-stone-900 mb-1">{formatCurrency(item.price, currency)}</p>
+          )}
           {item.description && (
             <p className="text-xs text-stone-500 leading-snug line-clamp-2">{item.description}</p>
+          )}
+
+          {item.isCombo && item.comboPrices && item.comboPrices.length > 0 && (
+            <div className="mt-2.5 space-y-2 border-t border-stone-100 pt-2.5">
+              {item.comboPrices.map((cp) => {
+                const comboOptionId = `${item.id}-combo-${cp.persons}p`;
+                const optionQty = cart.find(c => c.itemId === comboOptionId)?.qty ?? 0;
+
+                const handleAddOption = () => {
+                  addToCart({
+                    id: comboOptionId,
+                    name: `${item.name} (${cp.persons} Person${cp.persons > 1 ? 's' : ''})`,
+                    price: cp.price,
+                    isVeg: item.isVeg,
+                    imageUrl: item.imageUrl,
+                    qty: 1
+                  });
+                };
+
+                const handleRemoveOption = () => {
+                  removeFromCart(comboOptionId);
+                };
+
+                return (
+                  <div key={cp.persons} className="flex items-center justify-between text-xs py-1">
+                    <span className="font-medium text-stone-700">
+                      {cp.persons} Pax <span className="text-stone-400 font-normal">({formatCurrency(cp.price, currency)})</span>
+                    </span>
+                    {optionQty === 0 ? (
+                      <button
+                        onClick={handleAddOption}
+                        disabled={!item.isAvailable}
+                        className="px-3 py-1 rounded-full border border-stone-300 text-stone-850 hover:bg-stone-50 font-bold transition-all text-[11px] disabled:opacity-50"
+                      >
+                        + Add
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-full px-1.5 py-0.5">
+                        <button
+                          onClick={handleRemoveOption}
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-stone-600 hover:bg-stone-200"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="font-bold text-stone-800 text-[11px] min-w-[12px] text-center">{optionQty}</span>
+                        <button
+                          onClick={handleAddOption}
+                          disabled={!item.isAvailable}
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-stone-800 hover:bg-stone-200 disabled:opacity-50"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
@@ -1221,7 +1599,7 @@ const ItemCard = memo(function ItemCard({
           )}
         </div>
         <div className="w-full -mt-6 relative z-10">
-          {!item.isAvailable ? (
+          {item.isCombo ? null : (!item.isAvailable ? (
             <div className="w-full py-1.5 bg-stone-100 rounded-full text-center border border-stone-200 shadow-sm">
               <span className="text-[10px] font-bold text-stone-400">Sold out</span>
             </div>
@@ -1249,12 +1627,12 @@ const ItemCard = memo(function ItemCard({
                 <Plus className="w-4 h-4" />
               </button>
             </div>
-          )}
+          ))}
         </div>
       </div>
     </article>
   );
-});
+});;
 
 /* ===== SKELETON COMPONENT ===== */
 function ItemCardSkeleton() {

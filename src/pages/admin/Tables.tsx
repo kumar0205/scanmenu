@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { QrCode, Plus, Download, Printer, Grid3x3 as Grid3X3 } from 'lucide-react';
+import { QrCode, Plus, Download, Printer, Grid3x3 as Grid3X3, RotateCcw } from 'lucide-react';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -7,7 +7,6 @@ import { Modal } from '../../components/ui/Modal';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { subscribeToTables, addTable, updateTable, deleteTable } from '../../firebase/db';
-import { mockTables as initialMockTables } from '../../lib/mockData';
 import toast from 'react-hot-toast';
 import type { Table } from '../../types';
 
@@ -20,6 +19,28 @@ function generateQRDataURL(url: string): Promise<string> {
       errorCorrectionLevel: 'M',
     })
   );
+}
+
+function getTableQrToken(table: Table): string {
+  return table.qrToken || table.id.substring(0, 4);
+}
+
+function generate4CharToken(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 4; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 export default function Tables() {
@@ -37,13 +58,8 @@ export default function Tables() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    if (isDemo) {
-      const sorted = [...initialMockTables].sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' }));
-      setTables(sorted);
-      return;
-    }
     return subscribeToTables(restaurantId, setTables);
-  }, [restaurantId, isDemo]);
+  }, [restaurantId]);
 
   // Generate QR data URLs whenever tables or restaurant changes
   useEffect(() => {
@@ -59,11 +75,11 @@ export default function Tables() {
     async function generateAll() {
       const results: Record<string, string> = {};
       const promises = tables.map(async table => {
-        const url = `${baseUrl}/${restaurant!.slug}?table=${encodeURIComponent(table.id)}`;
+        const url = `${baseUrl}/${restaurant!.slug}?table=${encodeURIComponent(table.number)}&p=${encodeURIComponent(getTableQrToken(table))}`;
         try {
           results[table.id] = await generateQRDataURL(url);
-        } catch (err) {
-          console.error(`QR generation failed for table ${table.number}:`, err);
+        } catch {
+          // Individual card renders a fallback when QR generation fails.
         }
       });
       await Promise.all(promises);
@@ -75,19 +91,27 @@ export default function Tables() {
 
     generateAll();
     return () => { cancelled = true; };
-  }, [tables, restaurant?.slug, baseUrl]);
+  }, [tables, restaurant, restaurant?.slug, baseUrl]);
 
   async function handleAddTable() {
-    if (!tableNum.trim()) return;
+    const number = tableNum.trim();
+    if (!number) {
+      toast.error('Table number is required');
+      return;
+    }
+    if (tables.some(table => table.number.toLowerCase() === number.toLowerCase())) {
+      toast.error('A table with this number already exists');
+      return;
+    }
     setSaving(true);
     try {
       if (isDemo) {
         setTables(prev => {
-          const list = [...prev, { id: `t-${Date.now()}`, number: tableNum.trim(), status: 'available', currentOrderId: null }];
+          const list = [...prev, { id: `t-${Date.now()}`, number, status: 'available' as const, currentOrderId: null, qrToken: generate4CharToken() }];
           return list.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' }));
         });
       } else if (restaurantId) {
-        await addTable(restaurantId, { number: tableNum.trim(), status: 'available', currentOrderId: null });
+        await addTable(restaurantId, { number, status: 'available', currentOrderId: null });
       }
       toast.success(t('tables.tableSaved'));
       setAddModal(false);
@@ -103,6 +127,18 @@ export default function Tables() {
     }
     setSelectedTable(null);
     toast.success(t('tables.tableSaved'));
+  }
+
+  async function handleRotateQrToken(table: Table) {
+    if (!confirm(`Regenerate QR code for ${t('generic.table')} ${table.number}? Old printed QR codes for this table will stop working.`)) return;
+    const nextToken = generate4CharToken();
+    if (isDemo) {
+      setTables(prev => prev.map(tb => tb.id === table.id ? { ...tb, qrToken: nextToken } : tb));
+    } else if (restaurantId) {
+      await updateTable(restaurantId, table.id, { qrToken: nextToken });
+    }
+    setSelectedTable(null);
+    toast.success('QR code regenerated');
   }
 
   async function handleDelete(table: Table) {
@@ -145,8 +181,10 @@ export default function Tables() {
     }
     const win = window.open('', '_blank');
     if (!win) return;
+    const safeRestaurantName = escapeHtml(restaurant?.name ?? 'Restaurant');
+    const safeTableNumber = escapeHtml(table.number);
     win.document.write(`<!DOCTYPE html>
-<html><head><title>Table ${table.number} QR</title>
+<html><head><title>Table ${safeTableNumber} QR</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   @media print { body { margin: 0; } }
@@ -163,12 +201,12 @@ export default function Tables() {
   .scan-text { color: #888; font-size: 13px; margin-top: 8px; }
 </style></head>
 <body>
-  <div class="logo">${restaurant?.name ?? 'Restaurant'}</div>
+  <div class="logo">${safeRestaurantName}</div>
   <div class="subtitle">Scan to view menu &amp; order</div>
   <div class="qr-wrapper">
     <img src="${dataUrl}" width="250" height="250" alt="QR Code" />
   </div>
-  <div class="table-label">Table ${table.number}</div>
+  <div class="table-label">Table ${safeTableNumber}</div>
   <div class="scan-text">Point your phone camera at the QR code</div>
   <script>
     window.onload = function() {
@@ -236,7 +274,7 @@ export default function Tables() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
               {tables.map(table => {
                 const qrSrc = qrImages[table.id];
-                const qrUrl = `${baseUrl}/${restaurant?.slug}?table=${encodeURIComponent(table.id)}`;
+                const qrUrl = `${baseUrl}/${restaurant?.slug}?table=${encodeURIComponent(table.number)}&p=${encodeURIComponent(getTableQrToken(table))}`;
                 return (
                   <div key={table.id} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl p-4 flex flex-col items-center gap-3">
                     <p className="text-white font-semibold text-sm">{t('generic.table')} {table.number}</p>
@@ -302,6 +340,9 @@ export default function Tables() {
                 Mark as Inactive
               </Button>
             )}
+            <Button variant="outline" fullWidth onClick={() => handleRotateQrToken(selectedTable)}>
+              <RotateCcw className="w-4 h-4" /> Regenerate QR Code
+            </Button>
             <Button variant="danger" fullWidth onClick={() => handleDelete(selectedTable)}>
               {t('generic.delete')} {t('generic.table')}
             </Button>

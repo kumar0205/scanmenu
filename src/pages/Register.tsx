@@ -1,13 +1,15 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { registerRestaurant } from '../firebase/auth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { useAuthContext } from '../context/AuthContext';
 
 export default function Register() {
   const navigate = useNavigate();
+  const { user, userRole, loading: authLoading } = useAuthContext();
   const [form, setForm] = useState({
     restaurantName: '',
     email: '',
@@ -15,6 +17,14 @@ export default function Register() {
     phone: '',
     address: '',
   });
+
+  useEffect(() => {
+    if (!authLoading && user && !user.isAnonymous) {
+      if (userRole === 'owner') {
+        navigate('/admin/dashboard', { replace: true });
+      }
+    }
+  }, [user, userRole, authLoading, navigate]);
   const [loading, setLoading] = useState(false);
 
   function set(k: keyof typeof form) {
@@ -23,9 +33,22 @@ export default function Register() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    const phoneDigits = form.phone.replace(/\D/g, '');
+    if (!form.restaurantName.trim()) {
+      toast.error('Restaurant name is required');
+      return;
+    }
+    if (form.password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      toast.error('Enter a valid WhatsApp number with country code');
+      return;
+    }
     setLoading(true);
     try {
-      await registerRestaurant(form);
+      await registerRestaurant({ ...form, phone: phoneDigits });
       toast.success('Restaurant created!');
       navigate('/admin/dashboard');
     } catch (err: unknown) {
@@ -66,11 +89,11 @@ export default function Register() {
           <Input
             label="Password"
             type="password"
-            placeholder="Min. 6 characters"
+            placeholder="Min. 8 characters"
             value={form.password}
             onChange={set('password')}
             required
-            minLength={6}
+            minLength={8}
           />
           <Input
             label="WhatsApp Number"

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { getRestaurantBySlug } from '../firebase/db';
-import { mockRestaurant } from '../lib/mockData';
 import type { Restaurant } from '../types';
 
 export function useRestaurant(slug: string | undefined) {
@@ -11,19 +10,8 @@ export function useRestaurant(slug: string | undefined) {
   useEffect(() => {
     if (!slug) return;
 
-    const hasFirebase = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'placeholder';
-
-    if (!hasFirebase) {
-      // Demo mode: match mock restaurant slug or any slug
-      if (slug === mockRestaurant.slug || slug === 'demo') {
-        setRestaurant(mockRestaurant);
-      } else {
-        // Allow any slug in demo mode for easy testing
-        setRestaurant({ ...mockRestaurant, slug });
-      }
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
+    setNotFound(false);
 
     getRestaurantBySlug(slug).then(r => {
       if (!r) setNotFound(true);

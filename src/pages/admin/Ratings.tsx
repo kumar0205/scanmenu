@@ -6,35 +6,37 @@ import { Button } from '../../components/ui/Button';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
-import { subscribeToRatings } from '../../firebase/db';
-import { mockRatings } from '../../lib/mockData';
+import { subscribeToRatings, verifyRating } from '../../firebase/db';
 import { formatTimeAgo } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import type { Rating } from '../../types';
 
 export default function Ratings() {
-  const { restaurantId, restaurant, isDemo } = useAuthContext();
+  const { restaurantId, restaurant } = useAuthContext();
   const { t } = useI18n();
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!restaurantId) return;
-    if (isDemo) { setRatings(mockRatings); setLoading(false); return; }
     return subscribeToRatings(restaurantId, r => { setRatings(r); setLoading(false); });
-  }, [restaurantId, isDemo]);
+  }, [restaurantId]);
 
   const pending = ratings.filter(r => !r.verified).length;
   const verified = ratings.filter(r => r.verified).length;
   const rewarded = ratings.filter(r => r.rewardClaimed).length;
 
   async function verify(rating: Rating) {
-    if (isDemo) {
-      setRatings(prev => prev.map(r => r.id === rating.id ? { ...r, verified: true } : r));
-      toast.success(t('generic.success'));
-    }
-    if (restaurant?.googleReviewUrl) {
-      window.open(restaurant.googleReviewUrl, '_blank');
+    try {
+      if (restaurantId) {
+        await verifyRating(restaurantId, rating.id);
+        toast.success('Rating verified successfully!');
+      }
+      if (restaurant?.googleReviewUrl) {
+        window.open(restaurant.googleReviewUrl, '_blank');
+      }
+    } catch {
+      toast.error('Failed to verify rating.');
     }
   }
 

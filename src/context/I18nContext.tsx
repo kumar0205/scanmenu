@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
 type Language = 'en' | 'te' | 'hi';
@@ -116,6 +117,11 @@ const translations = {
     'settings.currency': 'Currency Symbol',
     'settings.upiId': 'UPI ID (for payments)',
     'settings.saved': 'Settings saved successfully',
+    'settings.saveChanges': 'Save Changes',
+    'settings.logo': 'Logo',
+    'settings.uploadLogo': 'Upload Logo',
+    'settings.language': 'Panel Language',
+    'settings.selectLanguage': 'Select your preferred language for the admin panel.',
     
     // Subscription
     'subscription.currentPlan': 'Current Plan',
@@ -245,6 +251,11 @@ const translations = {
     'settings.currency': 'కరెన్సీ గుర్తు',
     'settings.upiId': 'UPI ID (చెల్లింపుల కోసం)',
     'settings.saved': 'సెట్టింగ్‌లు విజయవంతంగా సేవ్ చేయబడ్డాయి',
+    'settings.saveChanges': 'మార్పులను సేవ్ చేయండి',
+    'settings.logo': 'లోగో',
+    'settings.uploadLogo': 'లోగోను అప్‌లోడ్ చేయండి',
+    'settings.language': 'ప్యానెల్ భాష',
+    'settings.selectLanguage': 'అడ్మిన్ ప్యానెల్ కోసం మీకు నచ్చిన భాషను ఎంచుకోండి.',
     
     'subscription.currentPlan': 'ప్రస్తుత ప్లాన్',
     'subscription.upgrade': 'ప్లాన్‌ను అప్‌గ్రేడ్ చేయండి',
@@ -373,6 +384,11 @@ const translations = {
     'settings.currency': 'मुद्रा प्रतीक',
     'settings.upiId': 'UPI ID (भुगतान के लिए)',
     'settings.saved': 'सेटिंग्स सफलतापूर्वक सहेजी गईं',
+    'settings.saveChanges': 'परिवर्तन सहेजें',
+    'settings.logo': 'लोगो',
+    'settings.uploadLogo': 'लोगो अपलोड करें',
+    'settings.language': 'पैनल भाषा',
+    'settings.selectLanguage': 'एडमिन पैनल के लिए अपनी पसंदीदा भाषा चुनें.',
     
     'subscription.currentPlan': 'वर्तमान योजना',
     'subscription.upgrade': 'योजना अपग्रेड करें',

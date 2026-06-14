@@ -33,17 +33,16 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
           className
         )}
       >
-        {(title || true) && (
-          <div className="flex items-center justify-between p-5 border-b border-[#2a2a2a]">
-            {title && <h3 className="text-white font-semibold text-base">{title}</h3>}
-            <button
-              onClick={onClose}
-              className="ml-auto text-[#52525b] hover:text-white transition-colors p-1 rounded-md hover:bg-[#1a1a1a]"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        <div className="flex items-center justify-between p-5 border-b border-[#2a2a2a]">
+          {title && <h3 className="text-white font-semibold text-base">{title}</h3>}
+          <button
+            onClick={onClose}
+            className="ml-auto text-[#52525b] hover:text-white transition-colors p-1 rounded-md hover:bg-[#1a1a1a]"
+            aria-label="Close modal"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
         <div className="p-5">{children}</div>
       </div>
     </div>

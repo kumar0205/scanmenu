@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Lock, AlertCircle } from 'lucide-react';
-import { signIn } from '../../firebase/auth';
-import { PLATFORM_OWNER_UID } from '../../components/layout/SuperAdminLayout';
+import { signIn, signOut, signUp } from '../../firebase/auth';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../../firebase/config';
 
 export default function SuperLogin() {
   const [email, setEmail] = useState('');
@@ -16,23 +17,45 @@ export default function SuperLogin() {
     setError('');
     setLoading(true);
 
-    if (email === 'admin@scanmenu.in' && password === 'admin123') {
-      localStorage.setItem('scanmenu_super_admin', 'true');
-      navigate('/super-admin/overview');
-      return;
-    }
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
 
     try {
-      const user = await signIn(email, password);
-      // In demo mode or if it matches
-      if (import.meta.env.VITE_FIREBASE_API_KEY === 'placeholder' || user.uid === PLATFORM_OWNER_UID) {
-        localStorage.setItem('scanmenu_super_admin', 'true');
-        navigate('/super-admin/overview');
-      } else {
-        setError('Unauthorized access. Your UID does not match the platform owner.');
+      let user;
+      try {
+        user = await signIn(cleanEmail, cleanPassword);
+      } catch (signInErr) {
+        // Auto-register super admin if not yet created in the project's Firebase Auth database
+        try {
+          user = await signUp(cleanEmail, cleanPassword);
+        } catch {
+          throw signInErr; // throw original sign-in error
+        }
       }
-    } catch (err: any) {
-      setError(err.message || 'Invalid credentials');
+
+      // Check role in users collection
+      const userDocRef = doc(db, 'users', user.user.uid);
+      const userDoc = await getDoc(userDocRef);
+      let role = userDoc.exists() ? userDoc.data().role : null;
+
+      // Auto-provision role if it's the platform owner email
+      if (!role && cleanEmail === 'cjvkumarraja@gmail.com') {
+        role = 'superAdmin';
+        await setDoc(userDocRef, {
+          email: cleanEmail,
+          role: 'superAdmin',
+          createdAt: Timestamp.now(),
+        });
+      }
+
+      if (role === 'superAdmin') {
+        navigate('/super-admin/restaurants');
+      } else {
+        setError('Unauthorized access. You do not have the superAdmin role.');
+        await signOut();
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Invalid credentials');
     } finally {
       setLoading(false);
     }

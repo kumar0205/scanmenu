@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react';
 import { subscribeToWaterRequests } from '../firebase/db';
 import type { WaterRequest } from '../types';
 
-export function useWaterRequests(restaurantId: string | null) {
+export function useWaterRequests(
+  restaurantId: string | null,
+  statusFilter: 'pending' | 'completed' = 'pending'
+) {
   const [requests, setRequests] = useState<WaterRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -17,12 +20,13 @@ export function useWaterRequests(restaurantId: string | null) {
       return;
     }
 
+    setLoading(true);
     const unsub = subscribeToWaterRequests(restaurantId, incoming => {
       setRequests(incoming);
       setLoading(false);
-    });
+    }, statusFilter);
     return unsub;
-  }, [restaurantId]);
+  }, [restaurantId, statusFilter]);
 
   return { requests, loading };
 }

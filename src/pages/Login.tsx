@@ -1,22 +1,50 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { signIn } from '../firebase/auth';
+import { signIn, resetPassword, signOut } from '../firebase/auth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { useAuthContext } from '../context/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { user, userRole, loading: authLoading } = useAuthContext();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && user && !user.isAnonymous) {
+      if (userRole === 'owner') {
+        navigate('/admin/dashboard', { replace: true });
+      }
+    }
+  }, [user, userRole, authLoading, navigate]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
     try {
-      await signIn(email, password);
+      const user = await signIn(cleanEmail, cleanPassword);
+
+      const userDocRef = doc(db, 'users', user.user.uid);
+      const userDoc = await getDoc(userDocRef);
+      const role = userDoc.exists() ? userDoc.data().role : null;
+
+      if (role === 'superAdmin' || cleanEmail === 'cjvkumarraja@gmail.com') {
+        await signOut();
+        toast.error('Super Admins must sign in through the Super Admin portal.');
+        setLoading(false);
+        return;
+      }
+
       toast.success('Welcome back!');
       navigate('/admin/dashboard');
     } catch (err: unknown) {
@@ -24,6 +52,23 @@ export default function Login() {
       toast.error(msg.includes('wrong-password') || msg.includes('invalid-credential') ? 'Invalid email or password' : msg);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!email.trim()) {
+      toast.error('Please enter your email address first');
+      return;
+    }
+    setResetting(true);
+    try {
+      await resetPassword(email);
+      toast.success('Password reset email sent! Check your inbox.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to reset password';
+      toast.error(msg);
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -47,14 +92,26 @@ export default function Login() {
             onChange={e => setEmail(e.target.value)}
             required
           />
-          <Input
-            label="Password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-          />
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-sm font-medium text-white">Password</label>
+              <button 
+                type="button" 
+                onClick={handleResetPassword}
+                disabled={resetting}
+                className="text-xs text-[#22c55e] hover:underline disabled:opacity-50"
+              >
+                Forgot Password?
+              </button>
+            </div>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+          </div>
           <Button type="submit" fullWidth loading={loading} size="lg" className="mt-2">
             Sign In
           </Button>

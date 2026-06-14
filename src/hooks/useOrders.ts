@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { subscribeToOrders } from '../firebase/db';
-import { mockOrders } from '../lib/mockData';
 import type { Order } from '../types';
 
 function playNotification() {
   try {
-    const ctx = new AudioContext();
+    const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
     const freqs = [880, 1100, 880];
     freqs.forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -19,7 +20,10 @@ function playNotification() {
       osc.start(ctx.currentTime + i * 0.15);
       osc.stop(ctx.currentTime + i * 0.15 + 0.15);
     });
-  } catch (_) {
+    setTimeout(() => {
+      ctx.close().catch(console.error);
+    }, 1000);
+  } catch {
     // AudioContext not available
   }
 }
@@ -32,15 +36,6 @@ export function useOrders(restaurantId: string | null) {
 
   useEffect(() => {
     if (!restaurantId) return;
-
-    const hasFirebase = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY !== 'placeholder';
-
-    if (!hasFirebase) {
-      // Demo mode: use mock data
-      setOrders(mockOrders);
-      setLoading(false);
-      return;
-    }
 
     const unsub = subscribeToOrders(restaurantId, incoming => {
       if (!isFirstLoad.current) {

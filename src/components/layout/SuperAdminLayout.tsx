@@ -1,33 +1,30 @@
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Store, CreditCard, BarChart3, Users, 
-  Bell, Settings, LogOut, Search, UserCircle, AlertCircle
+  Store, Bell, LogOut, Search, UserCircle, Menu as MenuIcon, X
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { signOut } from '../../firebase/auth';
 import { useAuthContext } from '../../context/AuthContext';
-import { useEffect } from 'react';
-
-// Replace this with the actual Platform Owner UID in production
-export const PLATFORM_OWNER_UID = 'DEVELOPER_UID_123'; 
+import { useEffect, useState } from 'react';
 
 export function SuperAdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, loading } = useAuthContext();
+  const { user, userRole, loading } = useAuthContext();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const isLocalAdmin = localStorage.getItem('scanmenu_super_admin') === 'true';
-    if (isLocalAdmin) return;
-
-    if (!loading && (!user || user.uid !== PLATFORM_OWNER_UID)) {
-      if (user && import.meta.env.VITE_FIREBASE_API_KEY === 'placeholder') {
-        // Allow bypass in demo mode if explicitly accessing super-admin
-      } else {
+    if (!loading) {
+      if (!user || userRole !== 'superAdmin') {
         navigate('/super-admin/login', { replace: true });
       }
     }
-  }, [user, loading, navigate]);
+  }, [user, userRole, loading, navigate]);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -35,34 +32,51 @@ export function SuperAdminLayout() {
   };
 
   const navItems = [
-    { to: '/super-admin/overview', icon: LayoutDashboard, label: 'Overview' },
     { to: '/super-admin/restaurants', icon: Store, label: 'All Restaurants' },
-    { to: '/super-admin/billing', icon: CreditCard, label: 'Plans & Billing' },
-    { to: '/super-admin/analytics', icon: BarChart3, label: 'Analytics' },
-    { to: '/super-admin/users', icon: Users, label: 'Users & Owners' },
-    { to: '/super-admin/notifications', icon: Bell, label: 'Notifications' },
-    { to: '/super-admin/settings', icon: Settings, label: 'Platform Settings' },
   ];
 
   if (loading) {
     return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
   }
 
+  if (!user || userRole !== 'superAdmin') {
+    return <Navigate to="/super-admin/login" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex font-sans">
+      {/* MOBILE OVERLAY */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden" 
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* SIDEBAR */}
-      <aside className="w-[260px] bg-[#111827] text-gray-300 flex flex-col hidden md:flex shrink-0">
-        <div className="p-6 border-b border-gray-800">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-              <Store className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-xl font-bold text-white tracking-tight">ScanMenu</h1>
-          </div>
+      <aside className={clsx(
+        "fixed inset-y-0 left-0 z-50 w-[260px] bg-[#111827] text-gray-300 flex flex-col transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 shrink-0",
+        mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="p-6 border-b border-gray-800 flex justify-between items-center">
           <div>
-            <p className="text-sm font-medium text-white">Platform Owner</p>
-            <p className="text-xs text-gray-400">Super Admin Dashboard</p>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                <Store className="w-5 h-5 text-white" />
+              </div>
+              <h1 className="text-xl font-bold text-white tracking-tight">ScanMenu</h1>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-white">Platform Owner</p>
+              <p className="text-xs text-gray-400">Super Admin Dashboard</p>
+            </div>
           </div>
+          <button 
+            onClick={() => setMobileMenuOpen(false)}
+            className="md:hidden text-gray-400 hover:text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
 
         <nav className="flex-1 py-6 px-3 space-y-1">
@@ -97,15 +111,23 @@ export function SuperAdminLayout() {
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col min-w-0 bg-[#F9FAFB]">
+      <main className="flex-1 flex flex-col min-w-0 bg-[#F9FAFB] w-full">
         {/* HEADER */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shrink-0">
-          <h2 className="text-xl font-semibold text-gray-800 capitalize">
-            {location.pathname.split('/').pop()?.replace('-', ' ')}
-          </h2>
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-8 shrink-0">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setMobileMenuOpen(true)}
+              className="md:hidden text-gray-500 hover:text-gray-700"
+            >
+              <MenuIcon className="w-6 h-6" />
+            </button>
+            <h2 className="text-xl font-semibold text-gray-800 capitalize truncate max-w-[150px] sm:max-w-xs">
+              {location.pathname.split('/').pop()?.replace('-', ' ')}
+            </h2>
+          </div>
           
-          <div className="flex items-center gap-6">
-            <div className="relative">
+          <div className="flex items-center gap-4 md:gap-6">
+            <div className="relative hidden lg:block">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
                 type="text" 
@@ -119,7 +141,7 @@ export function SuperAdminLayout() {
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
             </button>
             
-            <div className="flex items-center gap-2 border-l pl-6 border-gray-200">
+            <div className="flex items-center gap-2 md:border-l md:pl-6 border-gray-200">
               <UserCircle className="w-8 h-8 text-gray-400" />
               <div className="hidden sm:block text-sm">
                 <p className="font-medium text-gray-700">Admin</p>
@@ -130,7 +152,7 @@ export function SuperAdminLayout() {
         </header>
 
         {/* PAGE CONTENT */}
-        <div className="flex-1 overflow-auto p-8">
+        <div className="flex-1 overflow-auto p-4 md:p-8">
           <Outlet />
         </div>
       </main>

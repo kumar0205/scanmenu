@@ -12,6 +12,9 @@ export interface Restaurant {
   streetArea?: string;
   town?: string;
   state?: string;
+  coverImages?: string[];
+  coverImageUrl?: string;
+  description?: string;
   rewards: {
     active: boolean;
     discountPercent: number;
@@ -25,6 +28,8 @@ export interface Restaurant {
   waterBottle?: {
     enabled: boolean;
     price: number;
+    ml?: number;
+    options?: Array<{ id: string; ml: string; price: number }>;
   };
   callWaiter?: {
     enabled: boolean;
@@ -50,6 +55,8 @@ export interface MenuItem {
   isAvailable: boolean;
   order: number;
   createdAt: Timestamp;
+  isCombo?: boolean;
+  comboPrices?: Array<{ persons: number; price: number }>;
 }
 
 export interface Table {
@@ -57,6 +64,7 @@ export interface Table {
   number: string;
   status: 'available' | 'occupied' | 'inactive';
   currentOrderId: string | null;
+  qrToken?: string;
 }
 
 export interface OrderItem {
@@ -65,6 +73,7 @@ export interface OrderItem {
   price: number;
   qty: number;
   isVeg: boolean;
+  isExtra?: boolean;
 }
 
 export interface Order {
@@ -78,7 +87,7 @@ export interface Order {
   note: string;
   ratingSubmitted: boolean;
   sessionId?: string;
-  paymentStatus?: 'unpaid' | 'paid';
+  paymentStatus?: 'unpaid' | 'verifying' | 'paid';
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -110,4 +119,6 @@ export interface WaterRequest {
   type?: 'water' | 'waiter';
   status: 'pending' | 'completed';
   createdAt: Timestamp;
+  ml?: number | string;
+  price?: number;
 }
