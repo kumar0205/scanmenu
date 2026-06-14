@@ -390,6 +390,55 @@ export default function MenuPage() {
     }
   }
 
+  async function addWaterAsExtra(order: Order, opt: { id: string; ml: string; price: number }, qty: number) {
+    if (!restaurant) return;
+    try {
+      const updatedItems = [...order.items.map(item => ({ ...item }))];
+      const itemId = `water-bottle-${opt.id}`;
+      const existingExtra = updatedItems.find(i => i.itemId === itemId);
+      if (existingExtra) {
+        existingExtra.qty += qty;
+      } else {
+        updatedItems.push({
+          itemId: itemId,
+          name: `Water Bottle (${opt.ml})`,
+          price: opt.price,
+          qty: qty,
+          isVeg: true,
+          isExtra: true
+        });
+      }
+      
+      const newSubtotal = updatedItems.reduce((acc, item) => acc + item.price * item.qty, 0);
+      const newTotal = Math.round(newSubtotal * 1.05 * 100) / 100;
+      
+      if (hasFirebase) {
+        const orderRef = doc(db, 'restaurants', restaurant.id, 'orders', order.id);
+        await updateDoc(orderRef, {
+          items: updatedItems,
+          totalAmount: newTotal,
+          updatedAt: Timestamp.now()
+        });
+        
+        if (order.sessionId) {
+          const sessionRef = doc(db, 'sessions', order.sessionId);
+          await updateDoc(sessionRef, {
+            items: updatedItems.map(item => ({
+              name: item.name,
+              price: item.price,
+              qty: item.qty
+            })),
+            totalAmount: newTotal
+          });
+        }
+      }
+      toast.success(`Request sent! Added ${qty}x Water Bottle (${opt.ml}) directly to your active order.`);
+    } catch (error: any) {
+      console.error('Failed to add water as extra:', error);
+      toast.error('Failed to add water bottle to active order.');
+    }
+  }
+
   async function placeOrder() {
     if (!restaurant) return;
 
@@ -946,11 +995,17 @@ export default function MenuPage() {
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
                         <span className="text-[13px] font-bold text-stone-900">{formatCurrency(item.price * item.qty, restaurant?.currency ?? '₹')}</span>
-                        <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-full p-0.5 min-h-[32px]">
-                          <button onClick={() => removeFromCart(item.itemId)} className="w-7 h-7 rounded-full bg-stone-50 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"><Minus className="h-3 w-3" /></button>
-                          <span className="w-4 text-center text-xs font-bold text-stone-900">{item.qty}</span>
-                          <button onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })} className="w-7 h-7 rounded-full bg-stone-900 flex items-center justify-center text-white hover:bg-stone-800 transition-colors"><Plus className="h-3 w-3" /></button>
-                        </div>
+                        {item.itemId.startsWith('water-bottle-') ? (
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full select-none">
+                            Requested (Qty: {item.qty})
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-full p-0.5 min-h-[32px]">
+                            <button onClick={() => removeFromCart(item.itemId)} className="w-7 h-7 rounded-full bg-stone-50 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"><Minus className="h-3 w-3" /></button>
+                            <span className="w-4 text-center text-xs font-bold text-stone-900">{item.qty}</span>
+                            <button onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })} className="w-7 h-7 rounded-full bg-stone-900 flex items-center justify-center text-white hover:bg-stone-800 transition-colors"><Plus className="h-3 w-3" /></button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1046,21 +1101,27 @@ export default function MenuPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-4 shrink-0">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => removeFromCart(item.itemId)}
-                          className="h-[26px] w-[26px] rounded-full bg-stone-100 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"
-                        >
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <span className="w-3 text-center text-[13px] font-bold text-stone-900">{item.qty}</span>
-                        <button
-                          onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })}
-                          className="h-[26px] w-[26px] rounded-full bg-[#1a1814] flex items-center justify-center text-white hover:bg-black transition-colors"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      </div>
+                      {item.itemId.startsWith('water-bottle-') ? (
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full select-none">
+                          Requested (Qty: {item.qty})
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => removeFromCart(item.itemId)}
+                            className="h-[26px] w-[26px] rounded-full bg-stone-100 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"
+                          >
+                            <Minus className="h-3 w-3" />
+                          </button>
+                          <span className="w-3 text-center text-[13px] font-bold text-stone-900">{item.qty}</span>
+                          <button
+                            onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })}
+                            className="h-[26px] w-[26px] rounded-full bg-[#1a1814] flex items-center justify-center text-white hover:bg-black transition-colors"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
                       <span className="text-[13px] font-bold text-stone-900 w-[45px] text-right">
                         {formatCurrency(item.price * item.qty, restaurant?.currency ?? '₹')}
                       </span>
@@ -1312,25 +1373,55 @@ export default function MenuPage() {
               </div>
               <div className="p-5 border-t border-stone-100 bg-white shrink-0">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const opt = waterOptions.find(o => o.id === selectedWaterOptId);
-                    if (opt) {
-                      addToCart({
-                        id: `water-bottle-${opt.id}`,
-                        name: `Water Bottle (${opt.ml})`,
-                        price: opt.price,
-                        qty: waterQty,
-                        isVeg: true,
-                        imageUrl: ''
-                      });
-                      toast.success(`Added ${waterQty}x Water Bottle (${opt.ml}) to cart`);
+                    if (!opt || !restaurant) return;
+                    
+                    let finalTable = tableNumber;
+                    if (!finalTable) {
+                      const inputTable = window.prompt("Enter your table number (or leave empty for Takeaway):");
+                      if (inputTable === null) return;
+                      finalTable = inputTable.trim() || 'Takeaway';
+                      if (finalTable !== 'Takeaway') {
+                        setTableNumber(finalTable);
+                      }
+                    }
+
+                    try {
+                      // 1. Send request to the restaurant owner/waiter
+                      if (hasFirebase) {
+                        await createWaterRequest(restaurant.id, finalTable, waterQty, 'water', opt.ml, opt.price);
+                      }
+
+                      // 2. Add to placed order (as extra item) or to the local cart
+                      if (activeOrders.length > 0) {
+                        // User has active placed order(s) -> add water as extra to the most recent active order
+                        const activeOrder = activeOrders[0];
+                        await addWaterAsExtra(activeOrder, opt, waterQty);
+                      } else {
+                        // No active orders yet -> add to the local cart
+                        addToCart({
+                          id: `water-bottle-${opt.id}`,
+                          name: `Water Bottle (${opt.ml})`,
+                          price: opt.price,
+                          qty: waterQty,
+                          isVeg: true,
+                          imageUrl: ''
+                        });
+                        toast.success(`Request sent! Added ${waterQty}x Water Bottle (${opt.ml}) to cart.`);
+                        setCartOpen(true);
+                      }
+                      
                       setWaterModalOpen(false);
-                      setCartOpen(true);
+                      setRequestCooldown(60);
+                    } catch (err) {
+                      console.error("Failed to request water:", err);
+                      toast.error("Failed to send water request.");
                     }
                   }}
                   className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
                 >
-                  Add to Cart
+                  Request Now
                   <span className="bg-white/20 px-2 py-0.5 rounded text-xs">
                     {formatCurrency((waterOptions.find(o => o.id === selectedWaterOptId)?.price ?? 0) * waterQty, restaurant?.currency ?? '₹')}
                   </span>
