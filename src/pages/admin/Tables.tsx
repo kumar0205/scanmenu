@@ -56,7 +56,14 @@ export default function Tables() {
 
   // Always use the current origin so QR codes point to the live domain.
   // Never use VITE_APP_BASE_URL — it may contain localhost in development.
-  const baseUrl = window.location.origin;
+  const origin = window.location.origin;
+
+  // Build a QR URL safely — strips any leading slash from slug so we
+  // never produce double-slashes like //abhiruchi.
+  function buildQrUrl(slug: string, tableNumber: string, token: string): string {
+    const cleanSlug = slug.replace(/^\/+/, '');
+    return `${origin}/${cleanSlug}?table=${encodeURIComponent(tableNumber)}&p=${encodeURIComponent(token)}`;
+  }
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -77,7 +84,7 @@ export default function Tables() {
     async function generateAll() {
       const results: Record<string, string> = {};
       const promises = tables.map(async table => {
-        const url = `${baseUrl}/${restaurant!.slug}?table=${encodeURIComponent(table.number)}&p=${encodeURIComponent(getTableQrToken(table))}`;
+        const url = buildQrUrl(restaurant!.slug, table.number, getTableQrToken(table));
         try {
           results[table.id] = await generateQRDataURL(url);
         } catch {
@@ -276,7 +283,7 @@ export default function Tables() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
               {tables.map(table => {
                 const qrSrc = qrImages[table.id];
-                const qrUrl = `${baseUrl}/${restaurant?.slug}?table=${encodeURIComponent(table.number)}&p=${encodeURIComponent(getTableQrToken(table))}`;
+                const qrUrl = buildQrUrl(restaurant?.slug ?? '', table.number, getTableQrToken(table));
                 return (
                   <div key={table.id} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl p-4 flex flex-col items-center gap-3">
                     <p className="text-white font-semibold text-sm">{t('generic.table')} {table.number}</p>
