@@ -1,8 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
 import { subscribeToOrders } from '../firebase/db';
+import { useAuthContext } from '../context/AuthContext';
 import type { Order } from '../types';
 
-function playNotification() {
+function playNotification(soundUrl?: string) {
+  try {
+    if (soundUrl) {
+      const audio = new Audio(soundUrl);
+      audio.volume = 1.0; // Max volume
+      audio.play().catch(err => {
+        console.warn("Failed to play custom notification sound (autoplay blocked or network error):", err);
+        playSynthNotification();
+      });
+    } else {
+      playSynthNotification();
+    }
+  } catch (err) {
+    console.error("Audio playback error:", err);
+    playSynthNotification();
+  }
+}
+
+function playSynthNotification() {
   try {
     const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtx) return;
@@ -29,6 +48,7 @@ function playNotification() {
 }
 
 export function useOrders(restaurantId: string | null) {
+  const { restaurant } = useAuthContext();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const prevIdsRef = useRef<Set<string>>(new Set());
@@ -43,7 +63,7 @@ export function useOrders(restaurantId: string | null) {
           o => !prevIdsRef.current.has(o.id) && o.status === 'pending'
         );
         if (newOrders.length > 0) {
-          playNotification();
+          playNotification(restaurant?.notificationSoundUrl);
         }
       }
       prevIdsRef.current = new Set(incoming.map(o => o.id));
@@ -52,7 +72,7 @@ export function useOrders(restaurantId: string | null) {
       setLoading(false);
     });
     return unsub;
-  }, [restaurantId]);
+  }, [restaurantId, restaurant?.notificationSoundUrl]);
 
   return { orders, loading };
 }

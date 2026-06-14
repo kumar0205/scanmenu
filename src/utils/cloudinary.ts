@@ -107,3 +107,74 @@ export function getCloudinaryBlurUrl(url: string): string {
   
   return `${beforeUpload}w_50,e_blur:1000,q_10,f_auto/${afterUpload}`;
 }
+
+export async function uploadAudioToCloudinary(
+  file: File,
+  folder: string = "notifications",
+  onProgress?: (progress: number) => void
+): Promise<string> {
+  try {
+    const allowedTypes = new Set([
+      "audio/mpeg",
+      "audio/mp3",
+      "audio/wav",
+      "audio/ogg",
+      "audio/x-m4a",
+      "audio/m4a",
+      "audio/aac",
+      "audio/flac"
+    ]);
+    
+    if (!allowedTypes.has(file.type) && !file.type.startsWith("audio/")) {
+      throw new Error("Please upload a valid audio file (MP3, WAV, OGG, M4A, etc.).");
+    }
+    
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      throw new Error("Audio file must be 10MB or smaller.");
+    }
+
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "dthochffz";
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", uploadPreset);
+    formData.append("folder", `scanmenu/${folder}`);
+
+    const xhr = new XMLHttpRequest();
+    // Use the video upload endpoint for audio files
+    const url = `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`;
+    
+    return new Promise((resolve, reject) => {
+      xhr.open("POST", url, true);
+      
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          const percentComplete = Math.floor((e.loaded / e.total) * 100);
+          onProgress(percentComplete);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText) as { secure_url?: string };
+          if (!response.secure_url) {
+            reject(new Error("Cloudinary did not return a secure URL"));
+            return;
+          }
+          resolve(response.secure_url);
+        } else {
+          reject(new Error("Failed to upload audio to Cloudinary"));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      
+      xhr.send(formData);
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Audio upload failed.";
+    toast.error(msg);
+    throw error;
+  }
+}

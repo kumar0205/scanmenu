@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   QrCode, LayoutDashboard, UtensilsCrossed, ClipboardList,
-  Grid3x3 as Grid3X3, Star, Settings, LogOut, Bell, TrendingUp
+  Grid3x3 as Grid3X3, Star, Settings, LogOut, Bell, TrendingUp,
+  Smartphone, Download
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { signOut } from '../../firebase/auth';
@@ -10,6 +11,7 @@ import { useOrders } from '../../hooks/useOrders';
 import { useWaterRequests } from '../../hooks/useWaterRequests';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
+import { usePWA } from '../../hooks/usePWA';
 
 export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const navigate = useNavigate();
@@ -17,6 +19,7 @@ export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: ()
   const { orders } = useOrders(restaurantId);
   const { requests } = useWaterRequests(restaurantId);
   const { t } = useI18n();
+  const { isInstallable, isStandalone, installApp, isIOS } = usePWA();
   const today = new Date().setHours(0, 0, 0, 0);
   const pendingCount = orders.filter(o => {
     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
@@ -85,6 +88,37 @@ export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: ()
           </NavLink>
         ))}
       </nav>
+
+      {/* PWA Install Widget in Sidebar */}
+      {!isStandalone && (isInstallable || isIOS) && (
+        <div className="m-3 p-3 bg-[#161616] border border-[#2a2a2a] rounded-xl flex flex-col gap-2">
+          <div className="flex gap-2 items-start">
+            <div className="p-1.5 bg-[#22c55e]/10 border border-[#22c55e]/20 text-[#22c55e] rounded-lg shrink-0">
+              <Smartphone className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-white text-xs font-semibold">Install ScanMenu</p>
+              <p className="text-[#52525b] text-[10px] leading-tight mt-0.5">Add to home screen for order alerts & fast access.</p>
+            </div>
+          </div>
+          {isInstallable ? (
+            <button
+              onClick={() => {
+                installApp().then(success => {
+                  if (success) toast.success("App installed!");
+                });
+              }}
+              className="w-full bg-[#22c55e] hover:bg-green-600 text-black font-bold text-xs py-1.5 px-3 rounded-lg flex items-center justify-center gap-1 transition-all"
+            >
+              <Download className="w-3 h-3" /> Download App
+            </button>
+          ) : (
+            <p className="text-[9px] text-[#a1a1aa] leading-tight">
+              iOS Safari: Tap <span className="font-semibold text-white">Share</span>, then <span className="font-semibold text-white">Add to Home Screen</span>.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="p-3 border-t border-[#2a2a2a]">
         <button

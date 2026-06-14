@@ -34,6 +34,7 @@ export interface Restaurant {
   callWaiter?: {
     enabled: boolean;
   };
+  notificationSoundUrl?: string;
   createdAt: Timestamp;
 }
 

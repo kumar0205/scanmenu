@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings as SettingsIcon, Star, Gift, AlertTriangle, Loader2, Link2, ExternalLink, Droplets, Bell, X, Plus, Globe } from 'lucide-react';
+import {
+  Settings as SettingsIcon, Star, Gift, AlertTriangle, Loader2,
+  Link2, ExternalLink, Droplets, Bell, X, Plus, Globe,
+  Volume2, Play, Square, Trash2, Smartphone, Download
+} from 'lucide-react';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -8,7 +12,8 @@ import { Modal } from '../../components/ui/Modal';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { updateRestaurant, deleteAllMenuItems } from '../../firebase/db';
-import { uploadToCloudinary } from '../../utils/cloudinary';
+import { uploadToCloudinary, uploadAudioToCloudinary } from '../../utils/cloudinary';
+import { usePWA } from '../../hooks/usePWA';
 import toast from 'react-hot-toast';
 import type { Restaurant } from '../../types';
 
@@ -51,6 +56,17 @@ export default function Settings() {
   const coverFilesRef = useRef<HTMLInputElement>(null);
   const [coverImages, setCoverImages] = useState<string[]>(restaurant?.coverImages ?? (restaurant?.coverImageUrl ? [restaurant.coverImageUrl] : []));
   const [coverUploadPct, setCoverUploadPct] = useState<number | null>(null);
+  
+  // Custom sound state and refs
+  const [soundUrl, setSoundUrl] = useState(restaurant?.notificationSoundUrl ?? '');
+  const [soundUploadPct, setSoundUploadPct] = useState<number | null>(null);
+  const [isPlayingSound, setIsPlayingSound] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const soundFileRef = useRef<HTMLInputElement>(null);
+
+  // PWA states
+  const { isInstallable, isStandalone, installApp, isIOS } = usePWA();
+
   const menuUrl = `${window.location.origin}/${restaurant?.slug}`;
 
   useEffect(() => {
@@ -76,8 +92,79 @@ export default function Settings() {
       if (restaurant.callWaiter) setCallWaiter(restaurant.callWaiter);
       if (restaurant.coverImages) setCoverImages(restaurant.coverImages);
       else if (restaurant.coverImageUrl) setCoverImages([restaurant.coverImageUrl]);
+      setSoundUrl(restaurant.notificationSoundUrl ?? '');
     }
   }, [restaurant]);
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
+
+  const togglePlaySound = () => {
+    if (isPlayingSound && audioRef.current) {
+      audioRef.current.pause();
+      setIsPlayingSound(false);
+    } else if (soundUrl) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const audio = new Audio(soundUrl);
+      audio.volume = 1.0;
+      audioRef.current = audio;
+      setIsPlayingSound(true);
+      audio.play().catch((err) => {
+        console.error("Preview failed:", err);
+        setIsPlayingSound(false);
+      });
+      audio.onended = () => {
+        setIsPlayingSound(false);
+      };
+    }
+  };
+
+  async function handleSoundUpload(file: File) {
+    if (isDemo) {
+      toast.success('Sound upload skipped in demo mode');
+      return;
+    }
+    if (!restaurantId) return;
+    setSoundUploadPct(0);
+    try {
+      const url = await uploadAudioToCloudinary(file, 'notifications', setSoundUploadPct);
+      await updateRestaurant(restaurantId, { notificationSoundUrl: url });
+      setRestaurant({ ...restaurant!, notificationSoundUrl: url });
+      setSoundUrl(url);
+      toast.success('Notification sound uploaded successfully!');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSoundUploadPct(null);
+    }
+  }
+
+  async function handleRemoveSound() {
+    if (isDemo) {
+      toast.success('Sound removal skipped in demo mode');
+      return;
+    }
+    if (!restaurantId) return;
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        setIsPlayingSound(false);
+      }
+      await updateRestaurant(restaurantId, { notificationSoundUrl: '' });
+      setRestaurant({ ...restaurant!, notificationSoundUrl: '' });
+      setSoundUrl('');
+      toast.success('Notification sound removed');
+    } catch {
+      toast.error('Failed to remove notification sound');
+    }
+  }
 
   async function saveInfo() {
     setSaving(true);
@@ -415,6 +502,82 @@ export default function Settings() {
           </div>
         </section>
 
+        {/* Custom Notification Sound */}
+        <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+          <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
+            <Volume2 className="w-4 h-4 text-[#22c55e]" /> Order Notification Sound
+          </h3>
+          <p className="text-[#52525b] text-xs mb-4">
+            Upload a custom sound file to play when a new order is received. Plays at maximum volume.
+          </p>
+
+          <div className="space-y-4">
+            {soundUrl ? (
+              <div className="bg-[#161616] border border-[#2a2a2a] rounded-lg p-4 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-[#22c55e]/10 border border-[#22c55e]/20 text-[#22c55e] rounded-lg shrink-0">
+                    <Volume2 className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="text-white text-sm font-medium block">Custom Notification Sound Active</span>
+                    <span className="text-[#52525b] text-xs">Maximum volume enabled</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={togglePlaySound}
+                    className="flex items-center gap-1.5 border border-[#2a2a2a] hover:border-[#22c55e] text-white hover:text-[#22c55e] text-xs px-3 py-2 rounded-lg transition-all"
+                  >
+                    {isPlayingSound ? (
+                      <>
+                        <Square className="w-3.5 h-3.5 fill-current text-white shrink-0" /> Stop Preview
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 fill-current text-white shrink-0" /> Play Preview
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleRemoveSound}
+                    className="flex items-center gap-1.5 border border-[#2a2a2a] hover:border-[#ef4444] text-[#a1a1aa] hover:text-[#ef4444] text-xs px-3 py-2 rounded-lg transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-[#a1a1aa]" /> Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="border border-dashed border-[#2a2a2a] hover:border-[#22c55e] rounded-xl p-6 text-center cursor-pointer transition-colors"
+                onClick={() => soundFileRef.current?.click()}
+              >
+                <Volume2 className="w-8 h-8 text-[#52525b] mx-auto mb-2" />
+                <span className="text-sm font-medium text-white block">Upload Notification Sound</span>
+                <span className="text-[#52525b] text-xs">Click to browse your device. MP3, WAV, M4A up to 10MB</span>
+              </div>
+            )}
+
+            {soundUploadPct !== null && (
+              <div className="flex items-center gap-2 text-sm text-[#a1a1aa] bg-[#161616] border border-[#2a2a2a] p-3 rounded-lg">
+                <Loader2 className="w-4 h-4 animate-spin text-[#22c55e]" />
+                Uploading Sound File: {soundUploadPct}%
+              </div>
+            )}
+
+            <input
+              ref={soundFileRef}
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleSoundUpload(file);
+              }}
+            />
+          </div>
+        </section>
+
         {/* Google Business */}
         <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
           <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
@@ -543,6 +706,55 @@ export default function Settings() {
           </div>
           <p className="text-[#52525b] text-xs mb-4">Toggle the "Call Waiter" button on customer menu. When enabled, customers can call a waiter directly from their table.</p>
           <Button onClick={saveCallWaiter}>{t('generic.save')}</Button>
+        </section>
+
+        {/* Download Admin App */}
+        <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+          <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
+            <Smartphone className="w-4 h-4 text-[#22c55e]" /> Download Admin App
+          </h3>
+          <p className="text-[#52525b] text-xs mb-4">
+            Install ScanMenu on your phone or tablet for immediate order notifications and a native app experience.
+          </p>
+
+          {isStandalone ? (
+            <div className="bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.2)] rounded-lg p-4 flex items-center gap-3">
+              <span className="text-xl">📱</span>
+              <div>
+                <p className="text-[#22c55e] text-sm font-semibold">App Installed Successfully</p>
+                <p className="text-[#a1a1aa] text-xs">You are currently using the standalone application version of ScanMenu.</p>
+              </div>
+            </div>
+          ) : isInstallable ? (
+            <div className="space-y-3">
+              <p className="text-[#a1a1aa] text-xs">Get quick access to your admin dashboard directly from your home screen.</p>
+              <Button
+                onClick={() => {
+                  installApp().then(success => {
+                    if (success) toast.success("App installed successfully!");
+                  });
+                }}
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4 text-black" /> Download ScanMenu App
+              </Button>
+            </div>
+          ) : isIOS ? (
+            <div className="bg-[#161616] border border-[#2a2a2a] rounded-lg p-4 space-y-2.5">
+              <p className="text-white text-xs font-semibold uppercase tracking-wider text-[#a1a1aa]">How to install on iOS (iPhone/iPad):</p>
+              <ol className="text-xs text-[#a1a1aa] list-decimal pl-4 space-y-1.5">
+                <li>Open this admin page in the <strong className="text-white">Safari</strong> browser.</li>
+                <li>Tap the <strong className="text-white">Share</strong> button (box with an arrow pointing up) at the bottom or top of your screen.</li>
+                <li>Scroll down the list and tap <strong className="text-white">Add to Home Screen</strong>.</li>
+              </ol>
+            </div>
+          ) : (
+            <div className="bg-[#161616] border border-[#2a2a2a] rounded-lg p-4">
+              <p className="text-[#a1a1aa] text-xs">
+                To download ScanMenu as an app on your mobile device, open this site in your default browser (Chrome on Android or Safari on iOS) and look for the option to install or add to home screen.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Danger Zone */}
