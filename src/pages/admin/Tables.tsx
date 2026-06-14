@@ -54,7 +54,9 @@ export default function Tables() {
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
   const [qrLoading, setQrLoading] = useState(true);
 
-  const baseUrl = import.meta.env.VITE_APP_BASE_URL ?? window.location.origin;
+  // Always use the current origin so QR codes point to the live domain.
+  // Never use VITE_APP_BASE_URL — it may contain localhost in development.
+  const baseUrl = window.location.origin;
 
   useEffect(() => {
     if (!restaurantId) return;
