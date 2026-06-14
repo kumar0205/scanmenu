@@ -1,0 +1,56 @@
+import { Capacitor } from '@capacitor/core';
+
+export async function requestNotificationPermission() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const permission = await LocalNotifications.checkPermissions();
+      if (permission.display !== 'granted') {
+        await LocalNotifications.requestPermissions();
+      }
+    } catch (err) {
+      console.error('Failed to request Capacitor notification permissions:', err);
+    }
+  } else if ('Notification' in window) {
+    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      await Notification.requestPermission();
+    }
+  }
+}
+
+export async function showLocalNotification(title: string, body: string) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const permission = await LocalNotifications.checkPermissions();
+      if (permission.display === 'granted') {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title,
+              body,
+              id: Math.floor(Math.random() * 100000) + 1,
+              schedule: { at: new Date(Date.now() + 100) },
+              smallIcon: 'ic_stat_icon_name',
+              sound: undefined,
+              attachments: [],
+              actionTypeId: '',
+              extra: null,
+            },
+          ],
+        });
+      }
+    } catch (err) {
+      console.error('Failed to show Capacitor local notification:', err);
+    }
+  } else if ('Notification' in window) {
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body });
+    } else if (Notification.permission !== 'denied') {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        new Notification(title, { body });
+      }
+    }
+  }
+}

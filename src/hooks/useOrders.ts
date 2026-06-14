@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { subscribeToOrders } from '../firebase/db';
 import { useAuthContext } from '../context/AuthContext';
 import type { Order } from '../types';
+import { requestNotificationPermission, showLocalNotification } from '../utils/notifications';
 
 function playNotification(soundUrl?: string) {
   try {
@@ -55,6 +56,10 @@ export function useOrders(restaurantId: string | null) {
   const isFirstLoad = useRef(true);
 
   useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
+  useEffect(() => {
     if (!restaurantId) return;
 
     const unsub = subscribeToOrders(restaurantId, incoming => {
@@ -64,6 +69,13 @@ export function useOrders(restaurantId: string | null) {
         );
         if (newOrders.length > 0) {
           playNotification(restaurant?.notificationSoundUrl);
+          newOrders.forEach(order => {
+            const currency = restaurant?.currency ?? '₹';
+            showLocalNotification(
+              `New Order (Table ${order.tableNumber || 'Takeaway'}) 🛎️`,
+              `${order.customerName || 'Customer'} ordered ${order.items.length} item(s) for ${currency}${order.totalAmount}`
+            );
+          });
         }
       }
       prevIdsRef.current = new Set(incoming.map(o => o.id));
@@ -72,7 +84,8 @@ export function useOrders(restaurantId: string | null) {
       setLoading(false);
     });
     return unsub;
-  }, [restaurantId, restaurant?.notificationSoundUrl]);
+  }, [restaurantId, restaurant?.notificationSoundUrl, restaurant?.currency]);
 
   return { orders, loading };
 }
+

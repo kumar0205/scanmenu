@@ -74,7 +74,7 @@ export default function MenuPage() {
 
   useEffect(() => {
     if (hasFirebase) {
-      const unsubscribe = onAuthStateChanged(auth, (u) => {
+      const unsubscribe = onAuthStateChanged(auth, () => {
         if (!auth.currentUser) {
           signInAnonymously(auth).catch(console.error);
         }
@@ -94,6 +94,7 @@ export default function MenuPage() {
   const [showSpecialRequest, setShowSpecialRequest] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [activeOrdersVersion, setActiveOrdersVersion] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [requestCooldown, setRequestCooldown] = useState(0);
 
@@ -163,8 +164,9 @@ export default function MenuPage() {
             localStorage.setItem('scanmenu_active_orders', JSON.stringify(filteredStored));
             if (filteredStored.length === 0) localStorage.removeItem('scanmenu_locked_table');
             delete activeDataMap[orderId];
+            setActiveOrdersVersion(v => v + 1);
           } else {
-            activeDataMap[orderId] = { id: orderId, sessionId, ...orderData } as Order;
+            activeDataMap[orderId] = { ...orderData, id: orderId, sessionId } as Order;
           }
           setActiveOrders(Object.values(activeDataMap).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)));
         } else {
@@ -173,13 +175,14 @@ export default function MenuPage() {
           localStorage.setItem('scanmenu_active_orders', JSON.stringify(filteredStored));
           if (filteredStored.length === 0) localStorage.removeItem('scanmenu_locked_table');
           delete activeDataMap[orderId];
+          setActiveOrdersVersion(v => v + 1);
           setActiveOrders(Object.values(activeDataMap).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)));
         }
       });
       unsubs.push(unsub);
     });
     return () => { unsubs.forEach(unsub => unsub()); };
-  }, [restaurant?.id, tableNumber]);
+  }, [restaurant?.id, tableNumber, activeOrdersVersion]);
 
   // Active category scroll tracking
   useEffect(() => {
@@ -452,11 +455,71 @@ export default function MenuPage() {
         currentUid = userCred.user.uid;
       }
 
+      // Check if there is an active unpaid order for this table
+      const unpaidActiveOrder = activeOrders.find(
+        (o) =>
+          o.paymentStatus !== 'paid' &&
+          (o.status === 'pending' || o.status === 'preparing')
+      );
+
+      if (unpaidActiveOrder) {
+        // Append cart items to the existing active order
+        const updatedItems = [...unpaidActiveOrder.items.map(item => ({ ...item }))];
+        
+        for (const cartItem of cart) {
+          const existingExtra = updatedItems.find(i => i.itemId === cartItem.itemId && i.isExtra);
+          if (existingExtra) {
+            existingExtra.qty += cartItem.qty;
+          } else {
+            updatedItems.push({
+              itemId: cartItem.itemId,
+              name: cartItem.name,
+              price: cartItem.price,
+              qty: cartItem.qty,
+              isVeg: cartItem.isVeg,
+              isExtra: true
+            });
+          }
+        }
+        
+        const newSubtotal = updatedItems.reduce((acc, item) => acc + item.price * item.qty, 0);
+        const newTotal = Math.round(newSubtotal * 1.05 * 100) / 100;
+        
+        if (hasFirebase) {
+          const orderRef = doc(db, 'restaurants', restaurant.id, 'orders', unpaidActiveOrder.id);
+          await updateDoc(orderRef, {
+            items: updatedItems,
+            totalAmount: newTotal,
+            updatedAt: Timestamp.now()
+          });
+          
+          if (unpaidActiveOrder.sessionId) {
+            const sessionRef = doc(db, 'sessions', unpaidActiveOrder.sessionId);
+            await updateDoc(sessionRef, {
+              items: updatedItems.map(item => ({
+                name: item.name,
+                price: item.price,
+                qty: item.qty
+              })),
+              totalAmount: newTotal
+            });
+          }
+        }
+        
+        clearCart();
+        setCartOpen(false);
+        toast.success('Items added to your active order!');
+        setActiveTab('history');
+        setActiveOrdersVersion(v => v + 1);
+        return;
+      }
+
+      // If no active unpaid order, place a new order
       const sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
         ? crypto.randomUUID()
         : Math.random().toString(36).substring(2) + Date.now().toString(36);
 
-      const finalTotal = Math.round(cartTotal * 100) / 100;
+      const finalTotal = Math.round(cartTotal * 1.05 * 100) / 100;
       const orderRef = doc(collection(db, 'restaurants', restaurant.id, 'orders'));
       const orderId = orderRef.id;
 
@@ -507,6 +570,7 @@ export default function MenuPage() {
       setCartOpen(false);
       toast.success('Order placed!');
       setActiveTab('history');
+      setActiveOrdersVersion(v => v + 1);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Failed to place order';
       toast.error(msg);

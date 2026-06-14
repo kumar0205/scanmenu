@@ -60,7 +60,7 @@ export default function PayPage() {
 
   const [authInitialized, setAuthInitialized] = useState(false);
   const [currentUserUid, setCurrentUserUid] = useState<string | null>(null);
-  const isDifferentUser = authInitialized && session?.customerId && currentUserUid && session.customerId !== currentUserUid;
+  const isDifferentUser = !!(authInitialized && session?.customerId && currentUserUid && session.customerId !== currentUserUid);
 
   async function handleConfirmPayment() {
     if (!session || !sessionId) return;
