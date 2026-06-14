@@ -7,7 +7,7 @@ import { useRestaurant } from '../../hooks/useRestaurant';
 import { useMenu } from '../../hooks/useMenu';
 import { createWaterRequest, getTableById } from '../../firebase/db';
 import { db, auth } from '../../firebase/config';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { formatCurrency } from '../../utils/formatters';
 import type { MenuItem, Order } from '../../types';
 import { useCartStore } from '../../store/useCartStore';
@@ -74,7 +74,12 @@ export default function MenuPage() {
 
   useEffect(() => {
     if (hasFirebase) {
-      signInAnonymously(auth).catch(console.error);
+      const unsubscribe = onAuthStateChanged(auth, (u) => {
+        if (!auth.currentUser) {
+          signInAnonymously(auth).catch(console.error);
+        }
+      });
+      return () => unsubscribe();
     }
   }, [hasFirebase]);
   const { categories, items, loading: mLoading } = useMenu(restaurant?.id ?? null);
