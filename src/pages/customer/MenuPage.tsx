@@ -36,7 +36,7 @@ export default function MenuPage() {
     activeTab, setActiveTab,
     cart, addToCart, removeFromCart, clearCart,
     cartOpen, setCartOpen,
-    customerName, setCustomerName,
+    customerName,
     note, setNote
   } = useCartStore();
 
@@ -91,7 +91,6 @@ export default function MenuPage() {
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('all');
-  const [showSpecialRequest, setShowSpecialRequest] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrdersVersion, setActiveOrdersVersion] = useState(0);
@@ -1196,39 +1195,12 @@ export default function MenuPage() {
 
               {/* Special instructions + Customer name */}
               <div className="bg-white px-4 py-3 border-t border-stone-100 space-y-3 shrink-0">
-                {!showSpecialRequest && !note ? (
-                  <div>
-                    <button
-                      onClick={() => setShowSpecialRequest(true)}
-                      className="text-[11px] font-bold text-[#c86214] hover:text-[#b05612] uppercase tracking-wider flex items-center gap-1.5 transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Add Special Request
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-[#6b6560] uppercase tracking-wide">Special Requests</label>
-                      <button onClick={() => { setShowSpecialRequest(false); setNote(''); }} className="text-stone-400 hover:text-[#c86214] transition-colors p-1 -mr-1 rounded-full hover:bg-orange-50">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <input
-                      value={note}
-                      onChange={e => setNote(e.target.value)}
-                      placeholder="no spice"
-                      autoFocus
-                      className="w-full bg-white border border-stone-200 rounded-[6px] px-3 py-2 text-[13px] mt-0.5 focus:outline-none focus:border-[#c86214] focus:ring-1 focus:ring-[#c86214] text-stone-900"
-                    />
-                  </div>
-                )}
                 <div>
-                  <label className="text-[10px] font-bold text-[#6b6560] uppercase tracking-wide">Your Name (Optional)</label>
+                  <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Special Request (Optional)</label>
                   <input
-                    value={customerName}
-                    onChange={e => setCustomerName(e.target.value)}
-                    placeholder="Enter your name"
+                    value={note}
+                    onChange={e => setNote(e.target.value)}
+                    placeholder="e.g., no spice, extra cheese, no onions"
                     className="w-full bg-white border border-stone-200 rounded-[6px] px-3 py-2 text-[13px] mt-1.5 focus:outline-none focus:border-[#c86214] focus:ring-1 focus:ring-[#c86214] text-stone-900"
                   />
                 </div>
@@ -1248,7 +1220,11 @@ export default function MenuPage() {
                   <span>Grand Total</span>
                   <span>{formatCurrency(cartTotal * 1.05, restaurant?.currency ?? '₹')}</span>
                 </div>
-                <div className="pt-3">
+                <div className="pt-3 space-y-2">
+                  <p className="text-[10px] font-semibold text-stone-700 flex items-center gap-1.5 justify-center bg-black/[0.04] border border-black/[0.08] py-1.5 px-3 rounded-lg select-none">
+                    <span>⚠️</span>
+                    <span>No cancellations and changes in quantity once placed.</span>
+                  </p>
                   <button
                     onClick={placeOrder}
                     disabled={placing}
@@ -1283,28 +1259,28 @@ export default function MenuPage() {
               <div className="w-full animate-in">
                 <button
                   onClick={() => setCartOpen(true)}
-                  className="pointer-events-auto w-full bg-stone-900 hover:bg-stone-800 text-white rounded-t-2xl px-5 py-3.5 flex items-center justify-between shadow-[0_-8px_30px_rgba(0,0,0,0.15)] transition-all active:scale-[0.99]"
+                  className="pointer-events-auto w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-t-2xl px-5 py-3.5 flex items-center justify-between shadow-[0_-8px_30px_rgba(245,158,11,0.2)] transition-all active:scale-[0.99]"
                 >
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <div className="h-8.5 w-8.5 rounded-xl bg-white/10 flex items-center justify-center">
+                      <div className="h-8.5 w-8.5 rounded-xl bg-white/20 flex items-center justify-center">
                         <ShoppingBag className="h-4.5 w-4.5 text-white" />
                       </div>
-                      <span className="absolute -top-1.5 -right-1.5 h-5 min-w-5 px-1 rounded-full bg-amber-500 text-[9px] font-bold flex items-center justify-center">
+                      <span className="absolute -top-1.5 -right-1.5 h-5 min-w-5 px-1 rounded-full bg-stone-900 text-white text-[9px] font-bold flex items-center justify-center shadow-sm border border-white/20">
                         {cartCount}
                       </span>
                     </div>
                     <div className="text-left">
-                      <p className="text-[10px] text-stone-400">Your order</p>
-                      <p className="text-xs font-semibold">
+                      <p className="text-[10px] text-orange-100 font-medium">Your order</p>
+                      <p className="text-xs font-bold text-white">
                         {cartCount} {cartCount === 1 ? 'item' : 'items'}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold">{formatCurrency(cartTotal, restaurant?.currency ?? '₹')}</p>
-                    <div className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center">
-                      <ChevronRight className="h-4 w-4 text-white" />
+                    <p className="text-sm font-black text-white">{formatCurrency(cartTotal, restaurant?.currency ?? '₹')}</p>
+                    <div className="h-7 w-7 rounded-full bg-white/20 flex items-center justify-center">
+                      <ChevronRight className="h-4 w-4 text-white animate-blink-arrow" />
                     </div>
                   </div>
                 </button>
@@ -1643,6 +1619,13 @@ export default function MenuPage() {
         @keyframes slideUp { 
           from { transform: translateY(100%); } 
           to { transform: translateY(0); } 
+        }
+        @keyframes blinkArrow {
+          0%, 100% { opacity: 1; transform: translateX(0); }
+          50% { opacity: 0.4; transform: translateX(3px); }
+        }
+        .animate-blink-arrow {
+          animation: blinkArrow 1.2s infinite ease-in-out;
         }
         .scrollbar-none::-webkit-scrollbar { display: none; }
         .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }

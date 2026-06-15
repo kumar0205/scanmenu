@@ -21,6 +21,7 @@ const Ratings = lazy(() => import('./pages/admin/Ratings'));
 const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Subscription = lazy(() => import('./pages/admin/Subscription'));
 const Settings = lazy(() => import('./pages/admin/Settings'));
+const KitchenKDS = lazy(() => import('./pages/admin/KitchenKDS'));
 
 const SuperLogin = lazy(() => import('./pages/super-admin/SuperLogin'));
 const SuperRestaurants = lazy(() => import('./pages/super-admin/Restaurants'));
@@ -60,6 +61,7 @@ export default function App() {
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="subscription" element={<Subscription />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="kitchen" element={<KitchenKDS />} />
               </Route>
 
               {/* SUPER ADMIN ROUTES */}

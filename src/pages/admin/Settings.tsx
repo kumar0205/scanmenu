@@ -24,6 +24,7 @@ export default function Settings() {
   const { restaurant, restaurantId, setRestaurant, isDemo } = useAuthContext();
   const { t, language, setLanguage } = useI18n();
   const [name, setName] = useState(restaurant?.name ?? '');
+  const [slug, setSlug] = useState(restaurant?.slug ?? '');
   const [streetArea, setStreetArea] = useState(restaurant?.streetArea ?? '');
   const [town, setTown] = useState(restaurant?.town ?? '');
   const [stateVal, setStateVal] = useState(restaurant?.state ?? '');
@@ -78,6 +79,7 @@ export default function Settings() {
   useEffect(() => {
     if (restaurant) {
       setName(restaurant.name);
+      setSlug(restaurant.slug);
       setStreetArea(restaurant.streetArea ?? '');
       setTown(restaurant.town ?? '');
       setStateVal(restaurant.state ?? '');
@@ -209,12 +211,19 @@ export default function Settings() {
   }
 
   async function saveInfo() {
+    const cleanSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '');
+    if (!cleanSlug) {
+      toast.error("URL Slug cannot be empty");
+      return;
+    }
+
     setSaving(true);
     try {
       const computedAddress = [streetArea.trim(), town.trim(), stateVal.trim()].filter(Boolean).join(', ');
       const updated = {
         ...restaurant!,
         name,
+        slug: cleanSlug,
         address: computedAddress,
         streetArea,
         town,
@@ -228,6 +237,7 @@ export default function Settings() {
       if (!isDemo && restaurantId) {
         await updateRestaurant(restaurantId, {
           name,
+          slug: cleanSlug,
           address: computedAddress,
           streetArea,
           town,
@@ -394,6 +404,18 @@ export default function Settings() {
           </h3>
           <div className="space-y-4">
              <Input label={t('settings.restaurantName')} value={name} onChange={e => setName(e.target.value)} />
+             
+             <div className="flex flex-col gap-1.5">
+               <Input 
+                 label="Table URL Slug" 
+                 value={slug} 
+                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} 
+                 placeholder="e.g. varahi"
+               />
+               <p className="text-[10px] text-[#71717a] mt-0.5 leading-relaxed">
+                 The unique slug in your digital menu URL. Preview URL: <span className="text-white font-semibold">{origin}/{slug || 'restaurant'}</span>
+               </p>
+             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Street / Area" value={streetArea} onChange={e => setStreetArea(e.target.value)} />

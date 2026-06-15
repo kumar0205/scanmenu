@@ -206,19 +206,28 @@ export default function Tables() {
   }
   .logo { font-size: 24px; font-weight: 700; color: #111; margin-bottom: 4px; }
   .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
-  .qr-wrapper { border: 3px solid #22c55e; border-radius: 16px; padding: 16px; background: white; }
-  .qr-wrapper img { display: block; border-radius: 8px; }
+  .qr-wrapper { border: 1px solid #e4e4e7; border-radius: 16px; padding: 16px; background: white; }
+  .qr-wrapper img { display: block; width: 5cm; height: 5cm; border-radius: 8px; }
   .table-label { font-size: 32px; font-weight: 700; color: #111; margin-top: 24px; }
-  .scan-text { color: #888; font-size: 13px; margin-top: 8px; }
+  .scan-text { color: #111; font-size: 14px; font-weight: 600; margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .phone-icon { display: block; width: 18px; height: 18px; }
+  .no-app-text { color: #71717a; font-size: 11px; font-weight: 500; margin-top: 2px; }
 </style></head>
 <body>
   <div class="logo">${safeRestaurantName}</div>
   <div class="subtitle">Scan to view menu &amp; order</div>
   <div class="qr-wrapper">
-    <img src="${dataUrl}" width="250" height="250" alt="QR Code" />
+    <img src="${dataUrl}" alt="QR Code" />
   </div>
   <div class="table-label">Table ${safeTableNumber}</div>
-  <div class="scan-text">Point your phone camera at the QR code</div>
+  <div class="scan-text">
+    <svg class="phone-icon" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="5" y="2" width="14" height="20" rx="3" ry="3" />
+      <circle cx="12" cy="17" r="1.2" fill="black" />
+    </svg>
+    Scan with Camera / Google Lens
+  </div>
+  <div class="no-app-text">No App Required</div>
   <script>
     window.onload = function() {
       setTimeout(function() { window.print(); }, 300);

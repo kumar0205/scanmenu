@@ -76,6 +76,7 @@ export interface OrderItem {
   qty: number;
   isVeg: boolean;
   isExtra?: boolean;
+  status?: 'pending' | 'preparing' | 'ready';
 }
 
 export interface Order {

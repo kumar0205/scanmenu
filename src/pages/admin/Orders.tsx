@@ -217,29 +217,29 @@ function OrderCard({ order, currency, onAdvance, onCancel, onMarkPaid, t }: {
 
   return (
     <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-4 flex flex-col gap-3">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <p className="text-white font-semibold">{t('generic.table')} {order.tableNumber}</p>
+      <div className="flex justify-between items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-white font-semibold whitespace-nowrap shrink-0">{t('generic.table')} {order.tableNumber}</p>
             {order.paymentStatus && (
               <Badge 
                 variant={order.paymentStatus === 'paid' ? 'green' : order.paymentStatus === 'verifying' ? 'amber' : 'gray'} 
-                className={`text-[10px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider ${order.paymentStatus === 'verifying' ? 'animate-pulse' : ''}`}
+                className={`text-[10px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider whitespace-nowrap shrink-0 ${order.paymentStatus === 'verifying' ? 'animate-pulse' : ''}`}
               >
                 {order.paymentStatus === 'paid' ? 'Paid' : order.paymentStatus === 'verifying' ? 'Verifying' : 'Unpaid'}
               </Badge>
             )}
             {order.items.some(i => i.isExtra) && (
-              <Badge variant="amber" className="text-[10px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider animate-pulse">
+              <Badge variant="amber" className="text-[10px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider animate-pulse whitespace-nowrap shrink-0">
                 Extra Added
               </Badge>
             )}
           </div>
-          <p className="text-[#a1a1aa] text-xs mt-0.5">{order.customerName}</p>
+          <p className="text-[#a1a1aa] text-xs mt-0.5 truncate">{order.customerName}</p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <Badge variant={statusBadge(order.status)}>{t(`orders.status.${order.status}`)}</Badge>
-          <span className="text-[#52525b] text-[11px]">{formatTimeAgo(order.createdAt)}</span>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <Badge variant={statusBadge(order.status)} className="shrink-0 whitespace-nowrap">{t(`orders.status.${order.status}`)}</Badge>
+          <span className="text-[#52525b] text-[11px] shrink-0 whitespace-nowrap">{formatTimeAgo(order.createdAt)}</span>
         </div>
       </div>
 
@@ -261,7 +261,15 @@ function OrderCard({ order, currency, onAdvance, onCancel, onMarkPaid, t }: {
       </div>
 
       {order.note && (
-        <p className="text-[#52525b] text-xs italic border-t border-[#1a1a1a] pt-2">Note: {order.note}</p>
+        <div 
+          onClick={() => toast(`Request: "${order.note}"`, { icon: '💬', id: `note-${order.id}` })}
+          className="bg-[rgba(245,158,11,0.05)] border border-[rgba(245,158,11,0.15)] rounded-lg p-2.5 cursor-pointer hover:bg-[rgba(245,158,11,0.1)] transition-all"
+        >
+          <p className="text-[#f59e0b] text-xs font-bold flex items-center gap-1.5">
+            <span>Special Request:</span>
+            <span className="text-[#a1a1aa] font-medium font-mono">{order.note}</span>
+          </p>
+        </div>
       )}
 
       <div className="flex items-center justify-between border-t border-[#1a1a1a] pt-2">

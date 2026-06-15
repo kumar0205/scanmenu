@@ -181,12 +181,12 @@ export default function Dashboard() {
               {recentOrders.map(o => (
                 <div key={o.id} className="flex items-center gap-4 py-3 border-b border-[#1a1a1a] last:border-0">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium">{t('generic.table')} {o.tableNumber}</span>
-                      <span className="text-[#52525b] text-xs">·</span>
-                      <span className="text-[#a1a1aa] text-xs">{o.customerName}</span>
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span className="text-white text-sm font-medium whitespace-nowrap shrink-0">{t('generic.table')} {o.tableNumber}</span>
+                      <span className="text-[#52525b] text-xs shrink-0">·</span>
+                      <span className="text-[#a1a1aa] text-xs truncate max-w-[120px] shrink-0">{o.customerName}</span>
                       {o.items.some(i => i.isExtra) && (
-                        <Badge variant="amber" className="text-[9px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider animate-pulse">
+                        <Badge variant="amber" className="text-[9px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider animate-pulse whitespace-nowrap shrink-0">
                           Extra Added
                         </Badge>
                       )}

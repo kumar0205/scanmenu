@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   QrCode, LayoutDashboard, UtensilsCrossed, ClipboardList,
   Grid3x3 as Grid3X3, Star, Settings, LogOut, Bell, TrendingUp,
-  Smartphone, Download
+  Smartphone, Download, ChefHat
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { signOut } from '../../firebase/auth';
@@ -32,6 +32,7 @@ export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: ()
     { to: '/admin/menu', icon: UtensilsCrossed, label: t('nav.menu') },
     { to: '/admin/requests', icon: Bell, label: 'Requests', count: pendingRequestsCount },
     { to: '/admin/orders', icon: ClipboardList, label: t('nav.orders'), count: pendingCount },
+    { to: '/admin/kitchen', icon: ChefHat, label: 'Kitchen KDS' },
     { to: '/admin/tables', icon: Grid3X3, label: t('nav.tables') },
     { to: '/admin/ratings', icon: Star, label: t('nav.ratings') },
     { to: '/admin/analytics', icon: TrendingUp, label: t('nav.analytics') || 'Analytics' },
