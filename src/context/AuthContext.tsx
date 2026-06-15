@@ -3,7 +3,7 @@ import { type User } from 'firebase/auth';
 import { onAuthChange } from '../firebase/auth';
 import { getRestaurantByOwnerId } from '../firebase/db';
 import type { Restaurant } from '../types';
-import { doc, getDoc, collection, getDocs, query, limit } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 interface AuthContextType {
@@ -127,6 +127,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    if (!restaurant?.id) return;
+    let isMounted = true;
+    const unsub = onSnapshot(doc(db, 'restaurants', restaurant.id), (docSnap) => {
+      if (docSnap.exists() && isMounted) {
+        const updated = { id: docSnap.id, ...docSnap.data() } as Restaurant;
+        if (JSON.stringify(updated) !== localStorage.getItem('scanmenu_user_restaurant')) {
+          setRestaurant(updated);
+          localStorage.setItem('scanmenu_user_restaurant', JSON.stringify(updated));
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+      unsub();
+    };
+  }, [restaurant?.id]);
 
   return (
     <AuthContext.Provider value={{ user, userRole, restaurant, restaurantId: restaurant?.id ?? null, loading, setRestaurant: handleSetRestaurant, isDemo: false }}>

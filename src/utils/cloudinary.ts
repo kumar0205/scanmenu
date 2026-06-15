@@ -1,5 +1,7 @@
 import imageCompression from "browser-image-compression";
 import toast from "react-hot-toast";
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase/config';
 
 function validateImageFile(file: File) {
   const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -171,6 +173,58 @@ export async function uploadAudioToCloudinary(
       xhr.onerror = () => reject(new Error("Network error during upload"));
       
       xhr.send(formData);
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Audio upload failed.";
+    toast.error(msg);
+    throw error;
+  }
+}
+
+export async function uploadAudioToFirebase(
+  file: File,
+  restaurantId: string,
+  onProgress?: (progress: number) => void
+): Promise<string> {
+  try {
+    const allowedTypes = new Set([
+      "audio/mpeg",
+      "audio/mp3",
+      "audio/wav",
+      "audio/ogg",
+      "audio/x-m4a",
+      "audio/m4a",
+      "audio/aac",
+      "audio/flac"
+    ]);
+    
+    if (!allowedTypes.has(file.type) && !file.type.startsWith("audio/")) {
+      throw new Error("Please upload a valid audio file (MP3, WAV, OGG, M4A, etc.).");
+    }
+    
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      throw new Error("Audio file must be 10MB or smaller.");
+    }
+
+    const fileRef = ref(storage, `restaurants/${restaurantId}/notifications/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(fileRef, file);
+
+    return new Promise((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          onProgress?.(progress);
+        },
+        (error) => {
+          console.error("Firebase Storage upload error:", error);
+          reject(error);
+        },
+        async () => {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve(downloadUrl);
+        }
+      );
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Audio upload failed.";

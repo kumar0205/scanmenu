@@ -2,58 +2,21 @@ import { useState, useEffect, useRef } from 'react';
 import { subscribeToOrders } from '../firebase/db';
 import { useAuthContext } from '../context/AuthContext';
 import type { Order } from '../types';
-import { requestNotificationPermission, showLocalNotification } from '../utils/notifications';
-
-function playNotification(soundUrl?: string) {
-  try {
-    if (soundUrl) {
-      const audio = new Audio(soundUrl);
-      audio.volume = 1.0; // Max volume
-      audio.play().catch(err => {
-        console.warn("Failed to play custom notification sound (autoplay blocked or network error):", err);
-        playSynthNotification();
-      });
-    } else {
-      playSynthNotification();
-    }
-  } catch (err) {
-    console.error("Audio playback error:", err);
-    playSynthNotification();
-  }
-}
-
-function playSynthNotification() {
-  try {
-    const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const freqs = [880, 1100, 880];
-    freqs.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = freq;
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.15);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.1);
-      osc.start(ctx.currentTime + i * 0.15);
-      osc.stop(ctx.currentTime + i * 0.15 + 0.15);
-    });
-    setTimeout(() => {
-      ctx.close().catch(console.error);
-    }, 1000);
-  } catch {
-    // AudioContext not available
-  }
-}
+import { requestNotificationPermission, showLocalNotification, playNotification } from '../utils/notifications';
 
 export function useOrders(restaurantId: string | null) {
   const { restaurant } = useAuthContext();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const prevIdsRef = useRef<Set<string>>(new Set());
+  const prevOrdersRef = useRef<Map<string, Order>>(new Map());
   const isFirstLoad = useRef(true);
+
+  // Keep a ref to restaurant to avoid unsubscribing and resubscribing to Firestore orders list
+  // whenever the notification sound URL or currency settings are updated.
+  const restaurantRef = useRef(restaurant);
+  useEffect(() => {
+    restaurantRef.current = restaurant;
+  }, [restaurant]);
 
   useEffect(() => {
     requestNotificationPermission();
@@ -64,27 +27,56 @@ export function useOrders(restaurantId: string | null) {
 
     const unsub = subscribeToOrders(restaurantId, incoming => {
       if (!isFirstLoad.current) {
+        let shouldPlaySound = false;
+
+        // 1. Check for new pending orders
         const newOrders = incoming.filter(
-          o => !prevIdsRef.current.has(o.id) && o.status === 'pending'
+          o => !prevOrdersRef.current.has(o.id) && o.status === 'pending'
         );
         if (newOrders.length > 0) {
-          playNotification(restaurant?.notificationSoundUrl);
+          shouldPlaySound = true;
           newOrders.forEach(order => {
-            const currency = restaurant?.currency ?? '₹';
+            const currency = restaurantRef.current?.currency ?? '₹';
             showLocalNotification(
               `New Order (Table ${order.tableNumber || 'Takeaway'}) 🛎️`,
               `${order.customerName || 'Customer'} ordered ${order.items.length} item(s) for ${currency}${order.totalAmount}`
             );
           });
         }
+
+        // 2. Check for new payment verification requests (paymentStatus changes to 'verifying')
+        const newPaymentRequests = incoming.filter(o => {
+          const prev = prevOrdersRef.current.get(o.id);
+          // Trigger notification if it's currently verifying, and either we haven't seen it, or its previous status was not verifying
+          return o.paymentStatus === 'verifying' && (!prev || prev.paymentStatus !== 'verifying');
+        });
+        if (newPaymentRequests.length > 0) {
+          shouldPlaySound = true;
+          newPaymentRequests.forEach(order => {
+            const currency = restaurantRef.current?.currency ?? '₹';
+            showLocalNotification(
+              `Confirm Payment (Table ${order.tableNumber || 'Takeaway'}) 💳`,
+              `${order.customerName || 'Customer'} submitted payment of ${currency}${order.totalAmount} for verification.`
+            );
+          });
+        }
+
+        if (shouldPlaySound) {
+          playNotification(restaurantRef.current?.notificationSoundUrl);
+        }
       }
-      prevIdsRef.current = new Set(incoming.map(o => o.id));
+
+      // Update our map of previous orders
+      const newMap = new Map<string, Order>();
+      incoming.forEach(o => newMap.set(o.id, o));
+      prevOrdersRef.current = newMap;
       isFirstLoad.current = false;
+      
       setOrders(incoming);
       setLoading(false);
     });
     return unsub;
-  }, [restaurantId, restaurant?.notificationSoundUrl, restaurant?.currency]);
+  }, [restaurantId]);
 
   return { orders, loading };
 }

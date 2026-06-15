@@ -13,7 +13,7 @@ import { Modal } from '../../components/ui/Modal';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { updateRestaurant, deleteAllMenuItems } from '../../firebase/db';
-import { uploadToCloudinary, uploadAudioToCloudinary } from '../../utils/cloudinary';
+import { uploadToCloudinary } from '../../utils/cloudinary';
 import { usePWA } from '../../hooks/usePWA';
 import toast from 'react-hot-toast';
 import type { Restaurant } from '../../types';
@@ -119,10 +119,26 @@ export default function Settings() {
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      const audio = new Audio(soundUrl);
+      // Only append cache-busting timestamp to network URLs, not base64 data URLs
+      const cacheBusterUrl = soundUrl.startsWith('data:')
+        ? soundUrl
+        : (soundUrl.includes('?') ? `${soundUrl}&t=${Date.now()}` : `${soundUrl}?t=${Date.now()}`);
+      
+      const audio = new Audio();
+      audio.crossOrigin = "anonymous";
+      audio.preload = "auto";
+      audio.src = cacheBusterUrl;
       audio.volume = 1.0;
+      
       audioRef.current = audio;
       setIsPlayingSound(true);
+
+      audio.onerror = (e) => {
+        console.error("Audio element error during preview:", e);
+        toast.error("Failed to load audio preview. Format might not be supported or network error.");
+        setIsPlayingSound(false);
+      };
+
       audio.play().catch((err) => {
         console.error("Preview failed:", err);
         setIsPlayingSound(false);
@@ -139,17 +155,36 @@ export default function Settings() {
       return;
     }
     if (!restaurantId) return;
-    setSoundUploadPct(0);
+
+    // Limit file size to 800KB to ensure it fits comfortably within Firestore's 1MB document size limit
+    if (file.size > 800 * 1024) {
+      toast.error('Sound file is too large. Please upload an audio file under 800KB.');
+      return;
+    }
+
+    setSoundUploadPct(10);
     try {
-      const url = await uploadAudioToCloudinary(file, 'notifications', setSoundUploadPct);
-      await updateRestaurant(restaurantId, { notificationSoundUrl: url });
-      setRestaurant({ ...restaurant!, notificationSoundUrl: url });
-      setSoundUrl(url);
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
+      });
+
+      setSoundUploadPct(50);
+      await updateRestaurant(restaurantId, { notificationSoundUrl: dataUrl });
+      
+      setSoundUploadPct(80);
+      setRestaurant({ ...restaurant!, notificationSoundUrl: dataUrl });
+      setSoundUrl(dataUrl);
+      
+      setSoundUploadPct(100);
       toast.success('Notification sound uploaded successfully!');
     } catch (err) {
       console.error(err);
+      toast.error('Failed to process sound file. Please try again.');
     } finally {
-      setSoundUploadPct(null);
+      setTimeout(() => setSoundUploadPct(null), 500);
     }
   }
 
@@ -597,7 +632,10 @@ export default function Settings() {
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) handleSoundUpload(file);
+                if (file) {
+                  handleSoundUpload(file);
+                  e.target.value = '';
+                }
               }}
             />
           </div>

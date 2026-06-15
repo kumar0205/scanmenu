@@ -1,5 +1,59 @@
 import { Capacitor } from '@capacitor/core';
 
+export function playSynthNotification() {
+  try {
+    const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const freqs = [880, 1100, 880];
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      // Set synth beep volume to 0.9 (max volume without clipping)
+      gain.gain.setValueAtTime(0.9, ctx.currentTime + i * 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.15);
+      osc.start(ctx.currentTime + i * 0.15);
+      osc.stop(ctx.currentTime + i * 0.15 + 0.15);
+    });
+    setTimeout(() => {
+      ctx.close().catch(console.error);
+    }, 1000);
+  } catch {
+    // AudioContext not available
+  }
+}
+
+export function playNotification(soundUrl?: string) {
+  try {
+    if (soundUrl) {
+      // Only append cache-busting timestamp to network URLs, not base64 data URLs
+      const cacheBusterUrl = soundUrl.startsWith('data:')
+        ? soundUrl
+        : (soundUrl.includes('?') ? `${soundUrl}&t=${Date.now()}` : `${soundUrl}?t=${Date.now()}`);
+      
+      const audio = new Audio();
+      audio.crossOrigin = "anonymous";
+      audio.preload = "auto";
+      audio.src = cacheBusterUrl;
+      audio.volume = 1.0; // Max volume
+      
+      audio.play().catch(err => {
+        console.warn("Failed to play custom notification sound (autoplay blocked or network error):", err);
+        playSynthNotification();
+      });
+    } else {
+      playSynthNotification();
+    }
+  } catch (err) {
+    console.error("Audio playback error:", err);
+    playSynthNotification();
+  }
+}
+
 export async function requestNotificationPermission() {
   if (Capacitor.isNativePlatform()) {
     try {
