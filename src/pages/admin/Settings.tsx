@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Settings as SettingsIcon, Star, Gift, AlertTriangle, Loader2,
   Link2, ExternalLink, Droplets, Bell, X, Plus, Globe,
-  Volume2, Play, Square, Trash2, Smartphone, Download
+  Volume2, Play, Square, Trash2, Smartphone, Download, Percent
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { AdminHeader } from '../../components/layout/AdminHeader';
@@ -47,6 +47,12 @@ export default function Settings() {
     ]
   });
   const [callWaiter, setCallWaiter] = useState(restaurant?.callWaiter ?? { enabled: false });
+  const [tax, setTax] = useState(restaurant?.tax ?? {
+    cgstEnabled: false,
+    cgstPercent: 9,
+    sgstEnabled: false,
+    sgstPercent: 9,
+  });
   const [saving, setSaving] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [deleteModal, setDeleteModal] = useState(false);
@@ -99,6 +105,7 @@ export default function Settings() {
         setWaterBottle(wb);
       }
       if (restaurant.callWaiter) setCallWaiter(restaurant.callWaiter);
+      if (restaurant.tax) setTax(restaurant.tax);
       if (restaurant.coverImages) setCoverImages(restaurant.coverImages);
       else if (restaurant.coverImageUrl) setCoverImages([restaurant.coverImageUrl]);
       setSoundUrl(restaurant.notificationSoundUrl ?? '');
@@ -303,6 +310,14 @@ export default function Settings() {
     toast.success(t('generic.success'));
   }
 
+  async function saveTax() {
+    if (!isDemo && restaurantId) {
+      await updateRestaurant(restaurantId, { tax });
+    }
+    setRestaurant({ ...restaurant!, tax });
+    toast.success(t('generic.success'));
+  }
+
   async function handleLogoUpload(file: File) {
     if (isDemo) {
       toast.success('Logo upload skipped in demo mode');
@@ -314,8 +329,15 @@ export default function Settings() {
       const url = await uploadToCloudinary(file, 'logos', setUploadPct);
       await updateRestaurant(restaurantId, { logoUrl: url });
       setRestaurant({ ...restaurant!, logoUrl: url });
-      toast.success(t('generic.success'));
-    } finally { setUploadPct(null); }
+      toast.success('Logo uploaded successfully!');
+    } catch (err) {
+      console.error('Logo upload failed:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to upload logo';
+      toast.error(msg);
+    } finally {
+      setUploadPct(null);
+      if (fileRef.current) fileRef.current.value = '';
+    }
   }
 
   async function handleCoverImagesUpload(files: FileList) {
@@ -338,8 +360,10 @@ export default function Settings() {
       setRestaurant({ ...restaurant!, coverImages: newImages, coverImageUrl: newImages[0] });
       setCoverImages(newImages);
       toast.success(t('generic.success'));
-    } catch {
-      toast.error('Failed to upload photos');
+    } catch (err) {
+      console.error('Cover upload failed:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to upload photos';
+      toast.error(msg);
     } finally {
       setCoverUploadPct(null);
       if (coverFilesRef.current) coverFilesRef.current.value = '';
@@ -791,6 +815,110 @@ export default function Settings() {
           </div>
           <p className="text-[#52525b] text-xs mb-4">Toggle the "Call Waiter" button on customer menu. When enabled, customers can call a waiter directly from their table.</p>
           <Button onClick={saveCallWaiter}>{t('generic.save')}</Button>
+        </section>
+
+        {/* Tax Settings (CGST / SGST) */}
+        <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-white font-semibold flex items-center gap-2">
+              <Percent className="w-4 h-4 text-[#22c55e]" /> Tax Settings (CGST / SGST)
+            </h3>
+          </div>
+          <p className="text-[#52525b] text-xs mb-5">Configure GST rates applied on top of order subtotals. Tax is shown as a line-item breakdown on the customer payment page.</p>
+
+          <div className="space-y-4">
+            {/* CGST */}
+            <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-white text-sm font-semibold">CGST (Central GST)</p>
+                  <p className="text-[#52525b] text-xs mt-0.5">Central Government tax on goods & services</p>
+                </div>
+                <Toggle
+                  checked={tax.cgstEnabled}
+                  onChange={v => setTax(t => ({ ...t, cgstEnabled: v }))}
+                />
+              </div>
+              {tax.cgstEnabled && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Input
+                      label="CGST Rate"
+                      type="number"
+                      value={String(tax.cgstPercent)}
+                      onChange={e => setTax(t => ({ ...t, cgstPercent: Math.max(0, Math.min(100, Number(e.target.value))) }))}
+                      suffix="%"
+                    />
+                  </div>
+                  <div className="mt-5 text-right">
+                    <p className="text-[#a1a1aa] text-xs">e.g. on ₹100</p>
+                    <p className="text-[#22c55e] font-bold text-sm">₹{tax.cgstPercent}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* SGST */}
+            <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-white text-sm font-semibold">SGST (State GST)</p>
+                  <p className="text-[#52525b] text-xs mt-0.5">State Government tax on goods & services</p>
+                </div>
+                <Toggle
+                  checked={tax.sgstEnabled}
+                  onChange={v => setTax(t => ({ ...t, sgstEnabled: v }))}
+                />
+              </div>
+              {tax.sgstEnabled && (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Input
+                      label="SGST Rate"
+                      type="number"
+                      value={String(tax.sgstPercent)}
+                      onChange={e => setTax(t => ({ ...t, sgstPercent: Math.max(0, Math.min(100, Number(e.target.value))) }))}
+                      suffix="%"
+                    />
+                  </div>
+                  <div className="mt-5 text-right">
+                    <p className="text-[#a1a1aa] text-xs">e.g. on ₹100</p>
+                    <p className="text-[#22c55e] font-bold text-sm">₹{tax.sgstPercent}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Live preview */}
+            {(tax.cgstEnabled || tax.sgstEnabled) && (
+              <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl p-4">
+                <p className="text-[#52525b] text-xs mb-3 font-semibold uppercase tracking-wider">Preview on ₹1,000 order</p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between text-[#a1a1aa]">
+                    <span>Subtotal</span><span>₹1,000.00</span>
+                  </div>
+                  {tax.cgstEnabled && (
+                    <div className="flex justify-between text-[#a1a1aa]">
+                      <span>CGST ({tax.cgstPercent}%)</span>
+                      <span>₹{(1000 * tax.cgstPercent / 100).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {tax.sgstEnabled && (
+                    <div className="flex justify-between text-[#a1a1aa]">
+                      <span>SGST ({tax.sgstPercent}%)</span>
+                      <span>₹{(1000 * tax.sgstPercent / 100).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-white font-bold border-t border-[#2a2a2a] pt-2 mt-1">
+                    <span>Grand Total</span>
+                    <span>₹{(1000 + (tax.cgstEnabled ? 1000 * tax.cgstPercent / 100 : 0) + (tax.sgstEnabled ? 1000 * tax.sgstPercent / 100 : 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Button className="mt-5" onClick={saveTax}>{t('generic.save')}</Button>
         </section>
 
         {/* Download Admin App */}

@@ -6,6 +6,8 @@ import { useAuthContext } from '../../context/AuthContext';
 import { useOrders } from '../../hooks/useOrders';
 import { updateOrderStatus, updateOrder } from '../../firebase/db';
 import { playNotification } from '../../utils/notifications';
+import { formatTimeAgo } from '../../utils/formatters';
+import { useNow } from '../../hooks/useNow';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem } from '../../types';
 
@@ -34,12 +36,8 @@ export default function KitchenKDS() {
     }
   });
 
-  // Time tracking for active timers (refreshes every 10s)
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 10000);
-    return () => clearInterval(interval);
-  }, []);
+  // Live now ticker — drives all order elapsed-time displays (every second)
+  const now = useNow(1000);
 
   // Show all completed orders today toggle
   const [showAllCompleted, setShowAllCompleted] = useState(false);
@@ -104,44 +102,33 @@ export default function KitchenKDS() {
 
   // Helper to compute daily sequential order number starting from 1 (refreshes daily)
   const getOrderNumber = (order: Order) => {
+    if (order.dailyOrderId) return order.dailyOrderId;
+    
+    // Fallback for old orders
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayMs = today.getTime();
 
-    // Filter today's orders
     const todayOrders = orders.filter(o => {
       const oTime = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
       return oTime >= todayMs;
-    });
-
-    // Sort chronologically (oldest first)
-    todayOrders.sort((a, b) => {
+    }).sort((a, b) => {
       const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
       const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
       return timeA - timeB;
     });
 
     const idx = todayOrders.findIndex(o => o.id === order.id);
-    if (idx === -1) {
-      // Fallback: sort all available orders chronologically
-      const allSorted = [...orders].sort((a, b) => {
-        const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
-        const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
-        return timeA - timeB;
-      });
-      const allIdx = allSorted.findIndex(o => o.id === order.id);
-      return allIdx !== -1 ? allIdx + 1 : 1;
-    }
-    return idx + 1;
+    if (idx !== -1) return idx + 1;
+    
+    return order.id.slice(0, 4).toUpperCase();
   };
 
-  // Calculate elapsed time helper
+  // Calculate elapsed time helper using shared formatTimeAgo
   const getElapsedTime = (createdAt: any) => {
-    if (!createdAt) return '0 min';
-    const createdMs = typeof createdAt.toMillis === 'function' ? createdAt.toMillis() : Date.now();
-    const elapsedMs = now - createdMs;
-    const mins = Math.floor(elapsedMs / 60000);
-    return `${mins} min`;
+    if (!createdAt) return '0s';
+    const createdMs = typeof createdAt.toMillis === 'function' ? createdAt.toMillis() : now;
+    return formatTimeAgo(createdMs);
   };
 
   // Find identical future items for batch suggestions
@@ -343,10 +330,18 @@ export default function KitchenKDS() {
     return alerts;
   }, [orders, acknowledgedAlerts]);
 
-  // Filter orders by active KDS tab
+  // Filter orders by active KDS tab — always restricted to today's orders only
   const filteredOrders = useMemo(() => {
+    const todayStart = new Date().setHours(0, 0, 0, 0);
+
+    // Restrict to today's orders first
+    const todayOrders = orders.filter(o => {
+      const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
+      return ts >= todayStart;
+    });
+
     // Sort active orders oldest first
-    const active = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
+    const active = todayOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
     active.sort((a, b) => {
       const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
       const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
@@ -366,7 +361,7 @@ export default function KitchenKDS() {
       return active.filter(o => o.status === 'ready');
     }
     if (activeTab === 'completed') {
-      const completed = orders.filter(o => o.status === 'completed');
+      const completed = todayOrders.filter(o => o.status === 'completed');
       // Sort completed newest first
       completed.sort((a, b) => {
         const timeA = typeof a.updatedAt?.toMillis === 'function' ? a.updatedAt.toMillis() : Date.now();
@@ -375,11 +370,7 @@ export default function KitchenKDS() {
       });
 
       if (showAllCompleted) {
-        const today = new Date().setHours(0, 0, 0, 0);
-        return completed.filter(o => {
-          const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
-          return ts >= today;
-        });
+        return completed;
       }
 
       // Default: auto-hide after 5 minutes
@@ -443,6 +434,9 @@ export default function KitchenKDS() {
               : tab === 'completed' 
                 ? filteredOrders.length 
                 : orders.filter(o => {
+                    const todayStart = new Date().setHours(0, 0, 0, 0);
+                    const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
+                    if (ts < todayStart) return false;
                     if (o.status === 'completed' || o.status === 'cancelled') return false;
                     if (tab === 'active') return true;
                     if (tab === 'pending') return o.status === 'pending';

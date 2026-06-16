@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthContext';
 import { useWaterRequests } from '../../hooks/useWaterRequests';
 import { useOrders } from '../../hooks/useOrders';
-import { completeWaterRequest } from '../../firebase/db';
+import { completeWaterRequest, verifyOrderPayment } from '../../firebase/db';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
-import { GlassWater, Check, Clock, BellRing, ArrowUpDown, ClipboardList } from 'lucide-react';
+import { formatCurrency, formatTimeAgo } from '../../utils/formatters';
+import { useNow } from '../../hooks/useNow';
+import { GlassWater, Check, Clock, BellRing, ArrowUpDown, ClipboardList, CreditCard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Timestamp } from 'firebase/firestore';
 
@@ -16,6 +18,7 @@ export default function Requests() {
   const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('oldest');
   const { requests, loading } = useWaterRequests(restaurantId, filter);
   const { orders } = useOrders(restaurantId);
+  const now = useNow();
   
   const today = new Date().setHours(0, 0, 0, 0);
   const pendingOrdersCount = orders.filter(o => {
@@ -29,28 +32,37 @@ export default function Requests() {
     return sortOrder === 'latest' ? timeB - timeA : timeA - timeB;
   });
 
-  async function handleComplete(requestId: string, type?: 'water' | 'waiter') {
+  async function handleComplete(requestId: string, type?: 'water' | 'waiter' | 'payment', orderId?: string) {
     if (!restaurantId) return;
     try {
-      await completeWaterRequest(restaurantId, requestId);
-      toast.success(type === 'waiter' ? 'Waiter call marked as resolved!' : 'Water request marked as served!');
+      if (type === 'payment' && orderId) {
+        await verifyOrderPayment(restaurantId, orderId, undefined, requestId);
+        toast.success('Payment verified!');
+      } else {
+        await completeWaterRequest(restaurantId, requestId);
+        if (type === 'waiter') toast.success('Waiter call marked as resolved!');
+        else toast.success('Water request marked as served!');
+      }
     } catch {
       toast.error('Failed to complete request');
     }
   }
 
-  function formatTime(timestamp?: Timestamp | Date | string | number) {
-    if (!timestamp) return 'Just now';
-    let date: Date;
+  function getReqTime(timestamp?: Timestamp | Date | string | number) {
+    if (!timestamp) return '0s';
+    let ms: number;
     if (typeof timestamp === 'object' && 'toDate' in timestamp && typeof timestamp.toDate === 'function') {
-      date = timestamp.toDate();
+      ms = timestamp.toDate().getTime();
     } else if (timestamp instanceof Date) {
-      date = timestamp;
+      ms = timestamp.getTime();
     } else {
-      date = new Date(timestamp as string | number);
+      ms = new Date(timestamp as string | number).getTime();
     }
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Pass ms value — formatTimeAgo handles number type
+    return formatTimeAgo(ms);
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void now; // consumed by formatTimeAgo via Date.now() on each render
 
   return (
     <div className="bg-[#0a0a0a] min-h-screen text-white">
@@ -118,19 +130,32 @@ export default function Requests() {
             {sortedRequests.map(req => (
               <div 
                 key={req.id} 
-                className="bg-[#111111] border border-[#2a2a2a] rounded-2xl p-5 flex flex-col justify-between hover:border-brand-500/20 transition-all duration-300 shadow-md relative overflow-hidden group"
+                className={`bg-[#111111] border rounded-2xl p-5 flex flex-col justify-between hover:border-brand-500/20 transition-all duration-300 shadow-md relative overflow-hidden group ${
+                  req.type === 'payment'
+                    ? 'border-[#22c55e]/30 bg-gradient-to-br from-[#111111] to-[#0f1f14]'
+                    : 'border-[#2a2a2a]'
+                }`}
               >
-                {filter === 'pending' && (
+                {filter === 'pending' && req.type !== 'payment' && (
                   <div className="absolute top-0 right-0 bg-red-500/10 border-b border-l border-red-500/20 px-3 py-1 text-[10px] font-semibold text-red-400 rounded-bl-xl uppercase tracking-wider animate-pulse flex items-center gap-1">
                     <BellRing className="w-3 h-3" /> Urgent
+                  </div>
+                )}
+                {filter === 'pending' && req.type === 'payment' && (
+                  <div className="absolute top-0 right-0 bg-[#22c55e]/10 border-b border-l border-[#22c55e]/20 px-3 py-1 text-[10px] font-semibold text-[#22c55e] rounded-bl-xl uppercase tracking-wider flex items-center gap-1">
+                    <CreditCard className="w-3 h-3" /> Payment
                   </div>
                 )}
                 
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-brand-900/10 border border-brand-500/10 flex items-center justify-center text-brand-400 shrink-0">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                      req.type === 'payment'
+                        ? 'bg-[#22c55e]/10 border border-[#22c55e]/20 text-[#22c55e]'
+                        : 'bg-brand-900/10 border border-brand-500/10 text-brand-400'
+                    }`}>
                       <span className="text-lg font-bold">
-                        {req.type === 'waiter' ? '🛎️' : (req.tableNumber === 'Takeaway' ? '🥡' : `T${req.tableNumber}`)}
+                        {req.type === 'payment' ? '💳' : req.type === 'waiter' ? '🛎️' : (req.tableNumber === 'Takeaway' ? '🥡' : `T${req.tableNumber}`)}
                       </span>
                     </div>
                     <div>
@@ -138,13 +163,27 @@ export default function Requests() {
                         {req.tableNumber === 'Takeaway' ? 'Takeaway' : `Table ${req.tableNumber}`}
                       </h4>
                       <p className="text-[#52525b] text-xs flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3.5 h-3.5" /> {formatTime(req.createdAt)}
+                        <Clock className="w-3.5 h-3.5" /> {getReqTime(req.createdAt)}
                       </p>
                     </div>
                   </div>
 
                   <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-3.5 flex items-center justify-between">
-                    {req.type === 'waiter' ? (
+                    {req.type === 'payment' ? (
+                      <>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[#a1a1aa] text-xs flex items-center gap-1.5">
+                            Payment {req.dailyOrderId && <span className="text-white font-semibold">Order #{req.dailyOrderId}</span>}
+                          </span>
+                          {req.customerName && (
+                            <span className="text-[#a1a1aa] text-[11px]">{req.customerName}</span>
+                          )}
+                        </div>
+                        <span className="text-[#22c55e] text-base font-bold flex items-center gap-1.5">
+                          💳 {req.amount !== undefined ? formatCurrency(req.amount, '₹') : '—'}
+                        </span>
+                      </>
+                    ) : req.type === 'waiter' ? (
                       <>
                         <span className="text-[#a1a1aa] text-xs">Service Call</span>
                         <span className="text-white text-base font-bold flex items-center gap-1.5 animate-pulse">
@@ -166,10 +205,15 @@ export default function Requests() {
                   <div className="mt-5">
                     <Button 
                       fullWidth 
-                      onClick={() => handleComplete(req.id, req.type)}
-                      className="flex items-center justify-center gap-2"
+                      onClick={() => handleComplete(req.id, req.type, req.orderId)}
+                      className={`flex items-center justify-center gap-2 ${
+                        req.type === 'payment'
+                          ? '!bg-[#22c55e] hover:!bg-[#16a34a]'
+                          : ''
+                      }`}
                     >
-                      <Check className="w-4 h-4" /> {req.type === 'waiter' ? 'Mark as Resolved' : 'Mark as Served'}
+                      <Check className="w-4 h-4" />
+                      {req.type === 'payment' ? 'Mark as Verified' : req.type === 'waiter' ? 'Mark as Resolved' : 'Mark as Served'}
                     </Button>
                   </div>
                 )}

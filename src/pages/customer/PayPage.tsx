@@ -8,7 +8,7 @@ import { CheckCircle2, AlertTriangle, ArrowLeft, Smartphone, QrCode, ShieldCheck
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
 import { useRestaurant } from '../../hooks/useRestaurant';
-import { getOrder, submitRating, updateOrder } from '../../firebase/db';
+import { getOrder, submitRating, updateOrder, createPaymentRequest } from '../../firebase/db';
 
 interface SessionData {
   restaurantId: string;
@@ -80,6 +80,15 @@ export default function PayPage() {
       batch.update(doc(db, 'sessions', sessionId), { userConfirmedPayment: true });
       batch.update(doc(db, 'restaurants', session.restaurantId, 'orders', session.orderId), { paymentStatus: 'verifying' });
       await batch.commit();
+      // Notify the owner in the Requests tab
+      await createPaymentRequest(
+        session.restaurantId,
+        session.tableNumber,
+        session.orderId,
+        session.customerName,
+        session.totalAmount,
+        order?.dailyOrderId
+      );
       toast.success('Payment confirmation sent to the restaurant.');
     } catch (err) {
       console.error(err);
@@ -89,12 +98,17 @@ export default function PayPage() {
     }
   }
 
+  const [order, setOrder] = useState<import('../../types').Order | null>(null);
+
   useEffect(() => {
-    if (session?.restaurantId && session?.orderId && session?.status === 'paid') {
+    if (session?.restaurantId && session?.orderId) {
       getOrder(session.restaurantId, session.orderId)
         .then(o => {
-          if (o?.ratingSubmitted) {
-            setAlreadyRated(true);
+          if (o) {
+            setOrder(o);
+            if (o.ratingSubmitted) {
+              setAlreadyRated(true);
+            }
           }
         })
         .catch(console.error);
@@ -206,6 +220,14 @@ export default function PayPage() {
         : `upi://pay?pa=${session.upiId}&pn=${encodeURIComponent(session.restaurantName)}&cu=INR`)
     : '';
 
+  // Tax computation
+  const tax = restaurant?.tax;
+  const subtotal = session?.totalAmount ?? 0;
+  const cgstAmount = tax?.cgstEnabled ? Math.round(subtotal * (tax.cgstPercent / 100) * 100) / 100 : 0;
+  const sgstAmount = tax?.sgstEnabled ? Math.round(subtotal * (tax.sgstPercent / 100) * 100) / 100 : 0;
+  const grandTotal = subtotal + cgstAmount + sgstAmount;
+  const hasTax = cgstAmount > 0 || sgstAmount > 0;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-warm-50 flex flex-col items-center justify-center p-6 text-center font-ui">
@@ -296,7 +318,9 @@ export default function PayPage() {
               </div>
               <div className="space-y-2">
                 <h3 className="font-display font-bold text-2xl text-warm-900">Payment Confirmed</h3>
-                <p className="text-warm-600 text-sm">Your order from Table {session.tableNumber} is marked paid. The kitchen has begun preparing your delicious food!</p>
+                <p className="text-warm-600 text-sm">
+                  {order?.dailyOrderId ? `Order #${order.dailyOrderId}` : 'Your order'} from Table {session.tableNumber} is marked paid.
+                </p>
               </div>
               
               <div className="bg-warm-50 border border-warm-200 rounded-xl p-4 text-left max-w-sm mx-auto">
@@ -308,9 +332,25 @@ export default function PayPage() {
                       <span className="font-semibold text-warm-900">{formatCurrency(item.price * item.qty, '₹')}</span>
                     </div>
                   ))}
+                  <div className="flex justify-between pt-2 mt-1 text-warm-700 text-[11px]">
+                    <span>Subtotal</span>
+                    <span className="font-semibold">{formatCurrency(subtotal, '₹')}</span>
+                  </div>
+                  {cgstAmount > 0 && (
+                    <div className="flex justify-between pt-1 text-warm-600 text-[11px]">
+                      <span>CGST ({tax!.cgstPercent}%)</span>
+                      <span>{formatCurrency(cgstAmount, '₹')}</span>
+                    </div>
+                  )}
+                  {sgstAmount > 0 && (
+                    <div className="flex justify-between pt-1 text-warm-600 text-[11px]">
+                      <span>SGST ({tax!.sgstPercent}%)</span>
+                      <span>{formatCurrency(sgstAmount, '₹')}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between pt-2 mt-1 font-bold text-sm text-warm-900">
                     <span>Total Amount</span>
-                    <span>{formatCurrency(session.totalAmount, '₹')}</span>
+                    <span>{formatCurrency(grandTotal, '₹')}</span>
                   </div>
                 </div>
               </div>
@@ -434,8 +474,28 @@ export default function PayPage() {
             /* Active Payment Screen */
             <div className="space-y-6 text-center animate-slide-up">
               <div className="space-y-1">
-                <p className="text-[11px] text-warm-600 uppercase font-semibold tracking-widest">Table {session.tableNumber} · Total Amount</p>
-                <h1 className="font-sans font-black text-5xl tracking-tight text-warm-900">{formatCurrency(session.totalAmount, '₹')}</h1>
+                <p className="text-[11px] text-warm-600 uppercase font-semibold tracking-widest">
+                  {order?.dailyOrderId ? `Order #${order.dailyOrderId} · ` : ''}Table {session.tableNumber} · {hasTax ? 'Subtotal' : 'Total Amount'}
+                </p>
+                <h1 className="font-sans font-black text-5xl tracking-tight text-warm-900">{formatCurrency(subtotal, '₹')}</h1>
+                {hasTax && (
+                  <div className="inline-flex flex-col items-center gap-1 mt-2">
+                    {cgstAmount > 0 && (
+                      <span className="text-xs text-warm-600 font-medium">
+                        CGST ({tax!.cgstPercent}%): <span className="text-warm-800 font-semibold">{formatCurrency(cgstAmount, '₹')}</span>
+                      </span>
+                    )}
+                    {sgstAmount > 0 && (
+                      <span className="text-xs text-warm-600 font-medium">
+                        SGST ({tax!.sgstPercent}%): <span className="text-warm-800 font-semibold">{formatCurrency(sgstAmount, '₹')}</span>
+                      </span>
+                    )}
+                    <div className="h-px w-32 bg-warm-200 my-0.5" />
+                    <span className="text-sm font-bold text-warm-900">
+                      Grand Total: {formatCurrency(grandTotal, '₹')}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {!session.userConfirmedPayment ? (

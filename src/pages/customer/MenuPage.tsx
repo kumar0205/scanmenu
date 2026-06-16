@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, memo } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { Search, ShoppingBag, Plus, Minus, X, Utensils, Home, Star, Clock, MapPin, Phone, History, Flame, Leaf, Sparkles, ChevronRight, ArrowUpDown, Menu, Loader2 } from 'lucide-react';
-import { Timestamp, doc, setDoc, onSnapshot, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { Timestamp, doc, setDoc, onSnapshot, collection, serverTimestamp, updateDoc, runTransaction } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { useRestaurant } from '../../hooks/useRestaurant';
 import { useMenu } from '../../hooks/useMenu';
@@ -36,7 +36,7 @@ export default function MenuPage() {
     activeTab, setActiveTab,
     cart, addToCart, removeFromCart, clearCart,
     cartOpen, setCartOpen,
-    customerName,
+    customerName, setCustomerName,
     note, setNote
   } = useCartStore();
 
@@ -94,6 +94,7 @@ export default function MenuPage() {
   const [placing, setPlacing] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrdersVersion, setActiveOrdersVersion] = useState(0);
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [requestCooldown, setRequestCooldown] = useState(0);
 
@@ -457,7 +458,7 @@ export default function MenuPage() {
       // Check if there is an active unpaid order for this table
       const unpaidActiveOrder = activeOrders.find(
         (o) =>
-          o.paymentStatus !== 'paid' &&
+          o.paymentStatus === 'unpaid' &&
           (o.status === 'pending' || o.status === 'preparing')
       );
 
@@ -482,7 +483,9 @@ export default function MenuPage() {
         }
         
         const newSubtotal = updatedItems.reduce((acc, item) => acc + item.price * item.qty, 0);
-        const newTotal = Math.round(newSubtotal * 1.05 * 100) / 100;
+        const cgst = restaurant.tax?.cgstEnabled ? (restaurant.tax.cgstPercent / 100) : 0;
+        const sgst = restaurant.tax?.sgstEnabled ? (restaurant.tax.sgstPercent / 100) : 0;
+        const newTotal = Math.round(newSubtotal * (1 + cgst + sgst) * 100) / 100;
         
         if (hasFirebase) {
           const orderRef = doc(db, 'restaurants', restaurant.id, 'orders', unpaidActiveOrder.id);
@@ -518,9 +521,28 @@ export default function MenuPage() {
         ? crypto.randomUUID()
         : Math.random().toString(36).substring(2) + Date.now().toString(36);
 
-      const finalTotal = Math.round(cartTotal * 1.05 * 100) / 100;
+      const cgstRate = restaurant.tax?.cgstEnabled ? (restaurant.tax.cgstPercent / 100) : 0;
+      const sgstRate = restaurant.tax?.sgstEnabled ? (restaurant.tax.sgstPercent / 100) : 0;
+      const finalTotal = Math.round(cartTotal * (1 + cgstRate + sgstRate) * 100) / 100;
       const orderRef = doc(collection(db, 'restaurants', restaurant.id, 'orders'));
       const orderId = orderRef.id;
+
+      // Generate daily order number using IST timezone (UTC+5:30)
+      const now = new Date();
+      const istTime = new Date(now.getTime() + (330 * 60000));
+      const orderDate = istTime.toISOString().split('T')[0];
+
+      const counterRef = doc(db, 'restaurants', restaurant.id, 'dailyCounters', orderDate);
+      
+      const dailyOrderId = await runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        let newCount = 1;
+        if (counterDoc.exists()) {
+          newCount = (counterDoc.data().count || 0) + 1;
+        }
+        transaction.set(counterRef, { count: newCount }, { merge: true });
+        return newCount;
+      });
 
       await setDoc(orderRef, {
         customerId: currentUid,
@@ -534,6 +556,8 @@ export default function MenuPage() {
         ratingSubmitted: false,
         paymentStatus: 'unpaid',
         sessionId,
+        dailyOrderId,
+        orderDate,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -595,6 +619,73 @@ export default function MenuPage() {
   }
 
   const loading = rLoading || mLoading;
+
+  if (rLoading) {
+    return (
+      <div className="min-h-screen bg-stone-50 font-sans antialiased text-stone-900 flex justify-center">
+        <div className="w-full max-w-[480px] bg-stone-50 min-h-screen relative">
+          {/* Skeleton Header */}
+          <header className="fixed top-0 inset-x-0 z-40 bg-stone-50/90 backdrop-blur-md border-b border-stone-200">
+            <div className="max-w-[480px] mx-auto px-5 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-full bg-stone-200 animate-pulse" />
+                <div className="space-y-1.5">
+                  <div className="h-3.5 w-32 bg-stone-200 rounded-full animate-pulse" />
+                  <div className="h-2.5 w-20 bg-stone-200 rounded-full animate-pulse" />
+                </div>
+              </div>
+              <div className="h-9 w-9 rounded-full bg-stone-200 animate-pulse" />
+            </div>
+          </header>
+
+          {/* Skeleton Hero */}
+          <div className="relative pt-15">
+            <div className="h-[280px] bg-stone-200 animate-pulse" />
+            <div className="absolute bottom-5 left-5 right-5 space-y-2">
+              <div className="flex gap-2">
+                <div className="h-5 w-20 bg-white/30 rounded-full animate-pulse" />
+                <div className="h-5 w-20 bg-white/30 rounded-full animate-pulse" />
+              </div>
+              <div className="h-8 w-48 bg-white/30 rounded-lg animate-pulse" />
+              <div className="h-4 w-64 bg-white/30 rounded animate-pulse" />
+            </div>
+          </div>
+
+          {/* Skeleton Filter Pills */}
+          <div className="px-5 py-2.5 border-b border-stone-200/60 flex gap-2">
+            {[80, 60, 80, 70].map((w, i) => (
+              <div key={i} className={`h-7 bg-stone-200 rounded-full animate-pulse`} style={{ width: w }} />
+            ))}
+          </div>
+
+          {/* Skeleton Category Nav */}
+          <div className="px-5 py-2.5 border-b border-stone-200 flex gap-2">
+            {[40, 70, 55, 80, 60].map((w, i) => (
+              <div key={i} className="h-7 bg-stone-200 rounded-full animate-pulse" style={{ width: w }} />
+            ))}
+          </div>
+
+          {/* Skeleton Item Cards */}
+          <div className="px-5 pt-8 pb-24 space-y-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex gap-3 bg-white border border-stone-100 rounded-2xl p-4">
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-2/3 bg-stone-200 rounded animate-pulse" />
+                  <div className="h-3 w-full bg-stone-100 rounded animate-pulse" />
+                  <div className="h-3 w-4/5 bg-stone-100 rounded animate-pulse" />
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="h-5 w-16 bg-stone-200 rounded animate-pulse" />
+                    <div className="h-8 w-20 bg-stone-200 rounded-full animate-pulse" />
+                  </div>
+                </div>
+                <div className="h-24 w-24 rounded-xl bg-stone-200 animate-pulse shrink-0" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (notFound) {
     return (
@@ -690,11 +781,11 @@ export default function MenuPage() {
         <div className="flex-1 min-w-0 max-w-[480px] mx-auto md:max-w-none md:mx-0 w-full">
 
         {/* ===== HERO COVER ===== */}
-        {activeTab === 'menu' && (
+        {activeTab === 'menu' && restaurant && (
           <section className="relative pt-15 md:pt-0 text-left md:rounded-2xl md:overflow-hidden md:mb-6">
             <div className="relative h-[280px] overflow-hidden">
               <BlurImage
-                src={restaurant?.coverImageUrl || restaurant?.logoUrl || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=800'}
+                src={restaurant.coverImageUrl || restaurant.logoUrl || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=800'}
                 width={1200}
                 alt="Cover"
                 className="w-full h-full"
@@ -703,23 +794,20 @@ export default function MenuPage() {
               <div className="absolute inset-0 bg-gradient-to-b from-stone-950/30 to-transparent" />
 
               <div className="absolute bottom-0 inset-x-0 p-5 text-white">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] font-medium">
-                    <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
-                    <span>4.8</span>
-                    <span className="opacity-70">· 1.2k reviews</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] font-medium">
-                    <Clock className="h-3 w-3" />
-                    <span>Open 7 Days</span>
-                  </span>
-                </div>
                 <h1 className="text-3xl font-bold tracking-tight">
-                  {restaurant?.name ?? 'Osteria Luna'}
+                  {restaurant.name}
                 </h1>
-                <p className="mt-1.5 text-xs text-stone-200 max-w-sm leading-relaxed truncate">
-                  {restaurant?.description || 'Fresh ingredients, curated recipes. Buon appetito.'}
-                </p>
+                {restaurant.address && (
+                  <p className="mt-1 text-xs text-stone-300 flex items-center gap-1 leading-relaxed">
+                    <MapPin className="w-3 h-3 shrink-0 text-stone-400" />
+                    <span className="truncate">{restaurant.address}</span>
+                  </p>
+                )}
+                {restaurant.description && (
+                  <p className="mt-1 text-xs text-stone-200 max-w-sm leading-relaxed truncate">
+                    {restaurant.description}
+                  </p>
+                )}
               </div>
             </div>
           </section>
@@ -944,7 +1032,7 @@ export default function MenuPage() {
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="font-bold text-sm text-stone-950">Table {order.tableNumber || tableNumber || '-'}</p>
-                        <p className="text-[10px] text-stone-500 mt-0.5">Order: {order.id.slice(0, 8)}</p>
+                        <p className="text-[10px] text-stone-500 mt-0.5">Order: #{order.dailyOrderId || order.id.slice(0, 8)}</p>
                         {order.createdAt && (
                           <p className="text-[10px] text-stone-400 mt-0.5">
                             Placed at: {new Date(order.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -982,38 +1070,40 @@ export default function MenuPage() {
                         <span>{formatCurrency(order.totalAmount, restaurant?.currency ?? '₹')}</span>
                       </div>
                     </div>
-                    {order.paymentStatus === 'unpaid' && (
-                      <div className="grid grid-cols-2 gap-2 mt-4">
-                        <button
-                          onClick={() => {
-                            setSelectedOrderForExtra(order);
-                            setExtraItemsCart({});
-                            setExtraSearchQuery('');
-                          }}
-                          className="text-center bg-stone-100 hover:bg-stone-200 text-stone-850 font-bold py-3 px-2 rounded-lg text-xs transition shadow-sm"
-                        >
-                          + Add Extra Items
-                        </button>
-                        <a href={`/pay/${order.sessionId}`} className="block text-center bg-[#c86214] hover:bg-[#b05612] text-white font-bold py-3 px-2 rounded-lg text-xs transition shadow-sm flex items-center justify-center">
-                          Pay / Checkout
-                        </a>
+                    <div className="mt-4 space-y-4">
+                      {order.paymentStatus === 'unpaid' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedOrderForExtra(order);
+                                setExtraItemsCart({});
+                                setExtraSearchQuery('');
+                              }}
+                              className="block text-center bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold py-3 px-2 rounded-lg text-xs transition border border-stone-200"
+                            >
+                              + Add Extra Items
+                            </button>
+                            <Link to={`/pay/${order.sessionId}`} className="block text-center bg-[#c86214] hover:bg-[#b05612] text-white font-bold py-3 px-2 rounded-lg text-xs transition shadow-sm flex items-center justify-center">
+                              Pay / Checkout
+                            </Link>
+                          </div>
+                        )}
+                        {order.paymentStatus === 'verifying' && (
+                          <div className="text-center bg-blue-50 text-blue-750 font-bold py-3 rounded-lg text-xs border border-blue-200">
+                            Awaiting Admin Confirmation
+                          </div>
+                        )}
+                        {(order.paymentStatus === 'verifying' || order.paymentStatus === 'paid') && !order.ratingSubmitted && (
+                          <Link
+                            to={`/${restaurantSlug}/rate/${order.id}`}
+                            className="block text-center bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-lg text-xs transition shadow-sm flex items-center justify-center gap-1.5"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-white text-white" />
+                            Leave a Rating
+                          </Link>
+                        )}
                       </div>
-                    )}
-                    {order.paymentStatus === 'verifying' && (
-                      <div className="text-center bg-blue-50 text-blue-750 font-bold py-3 rounded-lg text-xs border border-blue-200 mt-4">
-                        Awaiting Admin Confirmation
-                      </div>
-                    )}
-                    {order.paymentStatus === 'paid' && !order.ratingSubmitted && (
-                      <a
-                        href={`/${restaurantSlug}/rate/${order.id}`}
-                        className="block text-center bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-lg text-xs transition shadow-sm mt-4 flex items-center justify-center gap-1.5"
-                      >
-                        <Star className="w-3.5 h-3.5 fill-white text-white" />
-                        Leave a Rating
-                      </a>
-                    )}
-                  </div>
+                    </div>
                 ))}
               </div>
             )}
@@ -1077,12 +1167,27 @@ export default function MenuPage() {
                   <div className="flex justify-between text-xs text-stone-500 mb-1">
                     <span>Subtotal</span><span>{formatCurrency(cartTotal, restaurant?.currency ?? '₹')}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-stone-500 mb-2 pb-2 border-b border-stone-200/60">
-                    <span>Taxes (5%)</span><span>{formatCurrency(cartTotal * 0.05, restaurant?.currency ?? '₹')}</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold text-stone-900 mb-4">
-                    <span>Total</span><span>{formatCurrency(cartTotal * 1.05, restaurant?.currency ?? '₹')}</span>
-                  </div>
+                  {(() => {
+                    const cgst = restaurant?.tax?.cgstEnabled ? restaurant.tax.cgstPercent / 100 : 0;
+                    const sgst = restaurant?.tax?.sgstEnabled ? restaurant.tax.sgstPercent / 100 : 0;
+                    const taxRate = cgst + sgst;
+                    const taxAmount = cartTotal * taxRate;
+                    const grandTotal = cartTotal + taxAmount;
+                    const hasTax = taxRate > 0;
+                    return (
+                      <>
+                        {hasTax && (
+                          <div className="flex justify-between text-xs text-stone-500 mb-2 pb-2 border-b border-stone-200/60">
+                            <span>Taxes ({Math.round(taxRate * 100)}%)</span>
+                            <span>{formatCurrency(taxAmount, restaurant?.currency ?? '₹')}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-sm font-bold text-stone-900 mb-4">
+                          <span>Total</span><span>{formatCurrency(hasTax ? grandTotal : cartTotal, restaurant?.currency ?? '₹')}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
                   <button onClick={() => setCartOpen(true)} className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2">
                     Checkout <ChevronRight className="w-4 h-4" />
                   </button>
@@ -1204,22 +1309,53 @@ export default function MenuPage() {
                     className="w-full bg-white border border-stone-200 rounded-[6px] px-3 py-2 text-[13px] mt-1.5 focus:outline-none focus:border-[#c86214] focus:ring-1 focus:ring-[#c86214] text-stone-900"
                   />
                 </div>
+                <div>
+                  <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Your Name</label>
+                  <input
+                    value={customerName}
+                    onChange={e => setCustomerName(e.target.value)}
+                    placeholder="Enter your name"
+                    className="w-full bg-white border border-stone-200 rounded-[6px] px-3 py-2 text-[13px] mt-1.5 focus:outline-none focus:border-[#c86214] focus:ring-1 focus:ring-[#c86214] text-stone-900"
+                  />
+                </div>
               </div>
 
               {/* Bill Details & Place Order */}
               <div className="border-t border-stone-200 bg-white px-4 pt-3 pb-3 space-y-2 shrink-0">
-                <div className="flex justify-between text-[13px] text-[#6b6560]">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(cartTotal, restaurant?.currency ?? '₹')}</span>
-                </div>
-                <div className="flex justify-between text-[13px] text-[#6b6560]">
-                  <span>CGST & SGST (5%)</span>
-                  <span>{formatCurrency(cartTotal * 0.05, restaurant?.currency ?? '₹')}</span>
-                </div>
-                <div className="flex justify-between text-base font-bold text-[#1a1814] pt-2">
-                  <span>Grand Total</span>
-                  <span>{formatCurrency(cartTotal * 1.05, restaurant?.currency ?? '₹')}</span>
-                </div>
+                {(() => {
+                  const cgst = restaurant?.tax?.cgstEnabled ? restaurant.tax.cgstPercent / 100 : 0;
+                  const sgst = restaurant?.tax?.sgstEnabled ? restaurant.tax.sgstPercent / 100 : 0;
+                  const cgstAmount = Math.round(cartTotal * cgst * 100) / 100;
+                  const sgstAmount = Math.round(cartTotal * sgst * 100) / 100;
+                  const grandTotal = cartTotal + cgstAmount + sgstAmount;
+                  const hasCGST = cgstAmount > 0;
+                  const hasSGST = sgstAmount > 0;
+                  const hasTax = hasCGST || hasSGST;
+                  return (
+                    <>
+                      <div className="flex justify-between text-[13px] text-[#6b6560]">
+                        <span>Subtotal</span>
+                        <span>{formatCurrency(cartTotal, restaurant?.currency ?? '₹')}</span>
+                      </div>
+                      {hasCGST && (
+                        <div className="flex justify-between text-[13px] text-[#6b6560]">
+                          <span>CGST ({restaurant!.tax!.cgstPercent}%)</span>
+                          <span>{formatCurrency(cgstAmount, restaurant?.currency ?? '₹')}</span>
+                        </div>
+                      )}
+                      {hasSGST && (
+                        <div className="flex justify-between text-[13px] text-[#6b6560]">
+                          <span>SGST ({restaurant!.tax!.sgstPercent}%)</span>
+                          <span>{formatCurrency(sgstAmount, restaurant?.currency ?? '₹')}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-base font-bold text-[#1a1814] pt-2">
+                        <span>Grand Total</span>
+                        <span>{formatCurrency(hasTax ? grandTotal : cartTotal, restaurant?.currency ?? '₹')}</span>
+                      </div>
+                    </>
+                  );
+                })()}
                 <div className="pt-3 space-y-2">
                   <p className="text-[10px] font-semibold text-stone-700 flex items-center gap-1.5 justify-center bg-black/[0.04] border border-black/[0.08] py-1.5 px-3 rounded-lg select-none">
                     <span>⚠️</span>
@@ -1481,7 +1617,7 @@ export default function MenuPage() {
                 <div className="flex items-center justify-between px-5 mb-3">
                   <div>
                     <h3 className="text-xl font-bold text-stone-900 font-display leading-tight">Add Extra Items</h3>
-                    <p className="text-xs text-stone-500 font-medium">To Order #{selectedOrderForExtra.id.slice(0, 8)}</p>
+                    <p className="text-xs text-stone-500 font-medium">To Order #{selectedOrderForExtra.dailyOrderId || selectedOrderForExtra.id.slice(0, 8)}</p>
                   </div>
                   <button 
                     onClick={() => !isUpdatingOrder && setSelectedOrderForExtra(null)} 

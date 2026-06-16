@@ -35,6 +35,12 @@ export interface Restaurant {
   callWaiter?: {
     enabled: boolean;
   };
+  tax?: {
+    cgstEnabled: boolean;
+    cgstPercent: number;
+    sgstEnabled: boolean;
+    sgstPercent: number;
+  };
   notificationSoundUrl?: string;
   createdAt: Timestamp;
 }
@@ -92,6 +98,8 @@ export interface Order {
   sessionId?: string;
   paymentStatus?: 'unpaid' | 'verifying' | 'paid';
   createdAt: Timestamp;
+  dailyOrderId?: number;
+  orderDate?: string;
   updatedAt: Timestamp;
 }
 
@@ -119,9 +127,14 @@ export interface WaterRequest {
   id: string;
   tableNumber: string;
   qty: number;
-  type?: 'water' | 'waiter';
+  type?: 'water' | 'waiter' | 'payment';
   status: 'pending' | 'completed';
   createdAt: Timestamp;
   ml?: number | string;
   price?: number;
+  // Payment confirmation fields
+  amount?: number;
+  orderId?: string;
+  dailyOrderId?: number;
+  customerName?: string;
 }

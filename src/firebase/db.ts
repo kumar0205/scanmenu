@@ -40,6 +40,25 @@ export async function getRestaurantBySlug(slug: string): Promise<Restaurant | nu
   return toRestaurant(d.id, d.data());
 }
 
+// Real-time listener version of getRestaurantBySlug — used by customer pages
+export function subscribeToRestaurantBySlug(
+  slug: string,
+  callback: (restaurant: Restaurant | null) => void
+): () => void {
+  const q = query(collection(db, 'restaurants'), where('slug', '==', slug), limit(1));
+  return onSnapshot(q, (snap) => {
+    if (snap.empty) {
+      callback(null);
+    } else {
+      const d = snap.docs[0];
+      callback(toRestaurant(d.id, d.data()));
+    }
+  }, (error) => {
+    console.error('subscribeToRestaurantBySlug error:', error);
+    callback(null);
+  });
+}
+
 export async function getRestaurantByOwnerId(uid: string): Promise<Restaurant | null> {
   const q = query(collection(db, 'restaurants'), where('ownerId', '==', uid), limit(1));
   const snap = await getDocs(q);
@@ -284,4 +303,63 @@ export async function completeWaterRequest(restaurantId: string, requestId: stri
   await updateDoc(doc(db, 'restaurants', restaurantId, 'requests', requestId), {
     status: 'completed',
   });
+}
+
+export async function verifyOrderPayment(restaurantId: string, orderId: string, sessionId?: string, requestId?: string): Promise<void> {
+  const batch = writeBatch(db);
+  
+  const orderRef = doc(db, 'restaurants', restaurantId, 'orders', orderId);
+  batch.update(orderRef, { paymentStatus: 'paid' });
+
+  let actualSessionId = sessionId;
+  if (!actualSessionId) {
+    const orderSnap = await getDoc(orderRef);
+    if (orderSnap.exists()) {
+      actualSessionId = orderSnap.data().sessionId;
+    }
+  }
+
+  if (actualSessionId) {
+    batch.update(doc(db, 'sessions', actualSessionId), { status: 'paid' });
+  }
+
+  if (requestId) {
+    batch.update(doc(db, 'restaurants', restaurantId, 'requests', requestId), { status: 'completed' });
+  } else {
+    const q = query(
+      collection(db, 'restaurants', restaurantId, 'requests'),
+      where('type', '==', 'payment'),
+      where('orderId', '==', orderId),
+      where('status', '==', 'pending'),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      batch.update(snap.docs[0].ref, { status: 'completed' });
+    }
+  }
+
+  await batch.commit();
+}
+
+export async function createPaymentRequest(
+  restaurantId: string,
+  tableNumber: string,
+  orderId: string,
+  customerName: string,
+  amount: number,
+  dailyOrderId?: number
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'restaurants', restaurantId, 'requests'), {
+    tableNumber,
+    qty: 1,
+    type: 'payment',
+    status: 'pending',
+    createdAt: Timestamp.now(),
+    amount,
+    orderId,
+    customerName,
+    ...(dailyOrderId !== undefined ? { dailyOrderId } : {})
+  });
+  return ref.id;
 }

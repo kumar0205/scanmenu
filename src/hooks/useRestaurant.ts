@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getRestaurantBySlug } from '../firebase/db';
+import { subscribeToRestaurantBySlug } from '../firebase/db';
 import type { Restaurant } from '../types';
 
 export function useRestaurant(slug: string | undefined) {
@@ -13,11 +13,18 @@ export function useRestaurant(slug: string | undefined) {
     setLoading(true);
     setNotFound(false);
 
-    getRestaurantBySlug(slug).then(r => {
-      if (!r) setNotFound(true);
-      else setRestaurant(r);
+    const unsubscribe = subscribeToRestaurantBySlug(slug, (r) => {
+      if (!r) {
+        setNotFound(true);
+        setRestaurant(null);
+      } else {
+        setNotFound(false);
+        setRestaurant(r);
+      }
       setLoading(false);
     });
+
+    return () => unsubscribe();
   }, [slug]);
 
   return { restaurant, loading, notFound };

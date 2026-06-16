@@ -11,6 +11,7 @@ import { useOrders } from '../../hooks/useOrders';
 import { useMenu } from '../../hooks/useMenu';
 import { subscribeToTables } from '../../firebase/db';
 import { formatCurrency, formatTimeAgo, getGreeting } from '../../utils/formatters';
+import { useNow } from '../../hooks/useNow';
 import type { Table } from '../../types';
 import toast from 'react-hot-toast';
 
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const { orders, loading: ordersLoading } = useOrders(restaurantId);
   const { items, loading: menuLoading } = useMenu(restaurantId);
   const [tables, setTables] = useState<Table[]>([]);
+  useNow(1000); // tick every second so formatTimeAgo stays live
 
   useEffect(() => {
     if (!restaurantId) return;

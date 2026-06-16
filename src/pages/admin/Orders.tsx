@@ -9,10 +9,11 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { useOrders } from '../../hooks/useOrders';
-import { updateOrderStatus } from '../../firebase/db';
+import { updateOrderStatus, verifyOrderPayment } from '../../firebase/db';
 import { doc, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { formatTimeAgo, formatCurrency } from '../../utils/formatters';
+import { useNow } from '../../hooks/useNow';
 import toast from 'react-hot-toast';
 import type { Order } from '../../types';
 
@@ -29,6 +30,7 @@ export default function Orders() {
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'month'>('today');
   const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('oldest');
   const currency = restaurant?.currency ?? '₹';
+  useNow(1000); // tick every second to keep formatTimeAgo live
 
   const now = Date.now();
   const dateThreshold = dateFilter === 'today'
@@ -44,6 +46,7 @@ export default function Orders() {
       if (activeTab === 'accepted') {
         if (o.status !== 'preparing' && o.status !== 'ready') return false;
       } else if (activeTab === 'extra') {
+        if (o.status === 'completed' || o.status === 'cancelled') return false;
         if (!o.items.some(i => i.isExtra)) return false;
       } else {
         if (o.status !== activeTab) return false;
@@ -64,7 +67,7 @@ export default function Orders() {
 
   const extraCount = orders.filter(o => {
     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
-    return o.items.some(i => i.isExtra) && ts >= dateThreshold;
+    return o.status !== 'completed' && o.status !== 'cancelled' && o.items.some(i => i.isExtra) && ts >= dateThreshold;
   }).length;
 
   const sortedFiltered = [...filtered].sort((a, b) => {
@@ -105,10 +108,7 @@ export default function Orders() {
     }
     try {
       if (!isDemo && restaurantId) {
-        const batch = writeBatch(db);
-        batch.update(doc(db, 'restaurants', restaurantId, 'orders', order.id), { paymentStatus: 'paid' });
-        batch.update(doc(db, 'sessions', order.sessionId), { status: 'paid' });
-        await batch.commit();
+        await verifyOrderPayment(restaurantId, order.id, order.sessionId);
       }
       toast.success('Payment marked as paid');
     } catch (err) {
@@ -195,7 +195,16 @@ export default function Orders() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedFiltered.map(order => (
-              <OrderCard key={order.id} order={order} currency={currency} onAdvance={advance} onCancel={cancel} onMarkPaid={markPaid} t={t} />
+              <OrderCard 
+                key={order.id} 
+                order={order} 
+                allOrders={orders}
+                currency={currency}
+                onAdvance={advance}
+                onCancel={cancel}
+                onMarkPaid={markPaid}
+                t={t}
+              />
             ))}
           </div>
         )}
@@ -204,8 +213,9 @@ export default function Orders() {
   );
 }
 
-function OrderCard({ order, currency, onAdvance, onCancel, onMarkPaid, t }: {
+function OrderCard({ order, allOrders, currency, onAdvance, onCancel, onMarkPaid, t }: {
   order: Order;
+  allOrders: Order[];
   currency: string;
   onAdvance: (o: Order) => void;
   onCancel: (o: Order) => void;
@@ -215,12 +225,37 @@ function OrderCard({ order, currency, onAdvance, onCancel, onMarkPaid, t }: {
   const { language } = useI18n();
   const acceptLabel = language === 'te' ? 'ఆమోదించు' : language === 'hi' ? 'स्वीकार करें' : 'Accept';
 
+  const getOrderNumber = () => {
+    if (order.dailyOrderId) return order.dailyOrderId;
+    
+    // Fallback: Calculate daily sequence for old orders
+    const orderTimeMs = typeof order.createdAt?.toMillis === 'function' ? order.createdAt.toMillis() : Date.now();
+    const orderDate = new Date(orderTimeMs);
+    orderDate.setHours(0, 0, 0, 0);
+    const todayStart = orderDate.getTime();
+    const tomorrowStart = todayStart + 86400000;
+
+    const sameDayOrders = allOrders.filter(o => {
+      const t = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
+      return t >= todayStart && t < tomorrowStart;
+    }).sort((a, b) => {
+      const tA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
+      const tB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
+      return tA - tB;
+    });
+
+    const idx = sameDayOrders.findIndex(o => o.id === order.id);
+    return idx !== -1 ? idx + 1 : order.id.slice(-4);
+  };
+
   return (
     <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-4 flex flex-col gap-3">
       <div className="flex justify-between items-start gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-white font-semibold whitespace-nowrap shrink-0">{t('generic.table')} {order.tableNumber}</p>
+            <p className="text-white font-semibold whitespace-nowrap shrink-0">
+              Order #{getOrderNumber()} • {t('generic.table')} {order.tableNumber}
+            </p>
             {order.paymentStatus && (
               <Badge 
                 variant={order.paymentStatus === 'paid' ? 'green' : order.paymentStatus === 'verifying' ? 'amber' : 'gray'} 

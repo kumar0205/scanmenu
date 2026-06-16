@@ -77,6 +77,11 @@ service cloud.firestore {
       }
       
       // Public / Customer writable collections
+      match /dailyCounters/{dateStr} {
+        allow read: if true;
+        allow write: if true;
+      }
+      
       match /requests/{requestId} { 
         allow read: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); 
         allow create: if request.auth != null;

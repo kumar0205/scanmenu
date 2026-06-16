@@ -8,6 +8,7 @@ import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { subscribeToRatings, verifyRating } from '../../firebase/db';
 import { formatTimeAgo } from '../../utils/formatters';
+import { useNow } from '../../hooks/useNow';
 import toast from 'react-hot-toast';
 import type { Rating } from '../../types';
 
@@ -16,6 +17,7 @@ export default function Ratings() {
   const { t } = useI18n();
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [loading, setLoading] = useState(true);
+  useNow(1000); // tick every second so formatTimeAgo stays live
 
   useEffect(() => {
     if (!restaurantId) return;
