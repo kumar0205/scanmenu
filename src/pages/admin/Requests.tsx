@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthContext';
 import { useWaterRequests } from '../../hooks/useWaterRequests';
 import { useOrders } from '../../hooks/useOrders';
-import { completeWaterRequest, verifyOrderPayment } from '../../firebase/db';
+import { completeWaterRequest, verifyOrderPayment, rejectOrderPayment } from '../../firebase/db';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
 import { formatCurrency, formatTimeAgo } from '../../utils/formatters';
@@ -45,6 +45,16 @@ export default function Requests() {
       }
     } catch {
       toast.error('Failed to complete request');
+    }
+  }
+
+  async function handleReject(requestId: string, orderId?: string) {
+    if (!restaurantId || !orderId) return;
+    try {
+      await rejectOrderPayment(restaurantId, orderId, undefined, requestId);
+      toast.success('Payment rejected. Customer can retry.');
+    } catch {
+      toast.error('Failed to reject payment');
     }
   }
 
@@ -203,18 +213,33 @@ export default function Requests() {
 
                 {filter === 'pending' && (
                   <div className="mt-5">
-                    <Button 
-                      fullWidth 
-                      onClick={() => handleComplete(req.id, req.type, req.orderId)}
-                      className={`flex items-center justify-center gap-2 ${
-                        req.type === 'payment'
-                          ? '!bg-[#22c55e] hover:!bg-[#16a34a]'
-                          : ''
-                      }`}
-                    >
-                      <Check className="w-4 h-4" />
-                      {req.type === 'payment' ? 'Mark as Verified' : req.type === 'waiter' ? 'Mark as Resolved' : 'Mark as Served'}
-                    </Button>
+                    {req.type === 'payment' ? (
+                      <div className="flex gap-2">
+                        <Button
+                          fullWidth
+                          onClick={() => handleComplete(req.id, req.type, req.orderId)}
+                          className="!bg-[#22c55e] hover:!bg-[#16a34a] flex items-center justify-center gap-2"
+                        >
+                          <Check className="w-4 h-4" /> Verify
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="ghost"
+                          onClick={() => handleReject(req.id, req.orderId)}
+                          className="text-[#ef4444] hover:bg-red-500/10 border border-red-500/20 flex items-center justify-center gap-2"
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        fullWidth
+                        onClick={() => handleComplete(req.id, req.type, req.orderId)}
+                      >
+                        <Check className="w-4 h-4" />
+                        {req.type === 'waiter' ? 'Mark as Resolved' : 'Mark as Served'}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

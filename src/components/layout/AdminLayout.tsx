@@ -23,18 +23,18 @@ export function AdminLayout() {
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col lg:flex-row">
       {/* Mobile Header */}
       <div className="lg:hidden flex items-center justify-between p-4 bg-[#111111] border-b border-[#2a2a2a] sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center shrink-0">
-            <QrCode className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-white font-semibold text-base">ScanMenu</span>
-        </div>
         <button
           onClick={() => setIsSidebarOpen(true)}
           className="w-10 h-10 flex items-center justify-center text-white bg-[#1a1a1a] rounded-lg border border-[#2a2a2a]"
         >
           <Menu className="w-5 h-5" />
         </button>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center shrink-0">
+            <QrCode className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-white font-semibold text-base">ScanMenu</span>
+        </div>
       </div>
 
       {/* Mobile Overlay */}

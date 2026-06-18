@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  Clock, Volume2, VolumeX, AlertTriangle, Check, ChefHat, Play, RotateCcw
+  Clock, Volume2, VolumeX, AlertTriangle, Check, ChefHat, Play, RotateCcw, ShoppingBag
 } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
 import { useOrders } from '../../hooks/useOrders';
@@ -16,7 +16,7 @@ export default function KitchenKDS() {
   const { orders, loading } = useOrders(restaurantId);
   
   // Navigation tabs
-  const tabs = ['active', 'pending', 'cooking', 'ready', 'completed', 'updates'] as const;
+  const tabs = ['active', 'cooking', 'ready', 'completed', 'updates'] as const;
   type KDSTab = typeof tabs[number];
   const [activeTab, setActiveTab] = useState<KDSTab>('active');
 
@@ -63,13 +63,14 @@ export default function KitchenKDS() {
   // Sound play handler (overriding or supplementing useOrders with mute state support)
   const lastOrderCountRef = useRef(0);
   useEffect(() => {
-    const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
-    if (pendingOrdersCount > lastOrderCountRef.current) {
+    // Sound fires when owner accepts an order (pending → accepted)
+    const activeOrdersCount = orders.filter(o => o.status === 'accepted' || o.status === 'preparing').length;
+    if (activeOrdersCount > lastOrderCountRef.current) {
       if (!isMuted) {
         playNotification(restaurant?.notificationSoundUrl);
       }
     }
-    lastOrderCountRef.current = pendingOrdersCount;
+    lastOrderCountRef.current = activeOrdersCount;
   }, [orders, isMuted, restaurant]);
 
   // Test sound function
@@ -139,10 +140,10 @@ export default function KitchenKDS() {
       ? currentOrder.createdAt.toMillis() 
       : Date.now();
 
-    // Find orders that are placed AFTER currentOrder and are pending or preparing
+    // Find orders that are placed AFTER currentOrder and are accepted or preparing
     const futureActiveOrders = orders.filter(o => {
       if (o.id === currentOrder.id) return false;
-      if (o.status !== 'pending' && o.status !== 'preparing') return false;
+      if (o.status !== 'accepted' && o.status !== 'preparing') return false;
       const oTime = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
       return oTime > currentOrderTime;
     });
@@ -190,11 +191,11 @@ export default function KitchenKDS() {
     if (updatedItems.every(i => i.status === 'ready')) {
       nextOrderStatus = 'ready';
     } else if (updatedItems.some(i => i.status === 'preparing' || i.status === 'ready')) {
-      if (order.status === 'pending') {
+      if (order.status === 'pending' || order.status === 'accepted') {
         nextOrderStatus = 'preparing';
       }
     } else {
-      nextOrderStatus = 'pending';
+      nextOrderStatus = 'accepted';
     }
 
     try {
@@ -293,25 +294,27 @@ export default function KitchenKDS() {
       }
 
       // 2. Extra items added
-      o.items.forEach(item => {
-        if (item.isExtra) {
-          const key = `extra-${o.id}-${item.itemId}`;
-          if (!acknowledgedAlerts[key]) {
-            alerts.push({
-              key,
-              type: 'extra',
-              orderId: o.id,
-              orderNumber: orderNum,
-              tableNumber: o.tableNumber,
-              title: `Extra Added: Order #${orderNum}`,
-              content: `Table ${o.tableNumber || 'Takeaway'} added +${item.qty}x ${item.name}`
-            });
+      if (o.status !== 'cancelled' && o.status !== 'completed') {
+        o.items.forEach(item => {
+          if (item.isExtra) {
+            const key = `extra-${o.id}-${item.itemId}`;
+            if (!acknowledgedAlerts[key]) {
+              alerts.push({
+                key,
+                type: 'extra',
+                orderId: o.id,
+                orderNumber: orderNum,
+                tableNumber: o.tableNumber,
+                title: `Extra Added: Order #${orderNum}`,
+                content: `Table ${o.tableNumber || 'Takeaway'} added +${item.qty}x ${item.name}`
+              });
+            }
           }
-        }
-      });
+        });
+      }
 
       // 3. Special customer notes
-      if (o.note && o.note.trim() !== '') {
+      if (o.status !== 'cancelled' && o.status !== 'completed' && o.note && o.note.trim() !== '') {
         const key = `note-${o.id}`;
         if (!acknowledgedAlerts[key]) {
           alerts.push({
@@ -341,7 +344,8 @@ export default function KitchenKDS() {
     });
 
     // Sort active orders oldest first
-    const active = todayOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
+    // Pending orders excluded — chef only sees owner-accepted (preparing/ready) orders
+    const active = todayOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled' && o.status !== 'pending');
     active.sort((a, b) => {
       const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
       const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
@@ -350,9 +354,6 @@ export default function KitchenKDS() {
 
     if (activeTab === 'active') {
       return active;
-    }
-    if (activeTab === 'pending') {
-      return active.filter(o => o.status === 'pending');
     }
     if (activeTab === 'cooking') {
       return active.filter(o => o.status === 'preparing');
@@ -437,9 +438,8 @@ export default function KitchenKDS() {
                     const todayStart = new Date().setHours(0, 0, 0, 0);
                     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
                     if (ts < todayStart) return false;
-                    if (o.status === 'completed' || o.status === 'cancelled') return false;
+                    if (o.status === 'completed' || o.status === 'cancelled' || o.status === 'pending') return false;
                     if (tab === 'active') return true;
-                    if (tab === 'pending') return o.status === 'pending';
                     if (tab === 'cooking') return o.status === 'preparing';
                     if (tab === 'ready') return o.status === 'ready';
                     return false;
@@ -510,9 +510,15 @@ export default function KitchenKDS() {
                         }`} />
                         <span className="font-bold text-base text-white">{alert.title}</span>
                       </div>
-                      <span className="text-xs font-bold bg-[#1d1d1d] text-zinc-400 px-2.5 py-0.5 rounded-full">
-                        Table {alert.tableNumber || 'Takeaway'}
-                      </span>
+                      {alert.tableNumber === 'Takeaway' || !alert.tableNumber ? (
+                        <span className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          <ShoppingBag className="w-3.5 h-3.5 text-amber-400" /> Parcel
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold bg-[#1d1d1d] text-zinc-400 px-2.5 py-0.5 rounded-full">
+                          Table {alert.tableNumber}
+                        </span>
+                      )}
                     </div>
                     <p className="text-zinc-300 text-sm leading-relaxed">{alert.content}</p>
                   </div>
@@ -579,9 +585,15 @@ export default function KitchenKDS() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-bold text-lg text-white whitespace-nowrap shrink-0">Order #{orderNum}</span>
-                          <span className="text-xs bg-[#1a1a1a] text-zinc-400 font-semibold px-2 py-0.5 rounded whitespace-nowrap shrink-0">
-                            Table {order.tableNumber || 'Takeaway'}
-                          </span>
+                          {order.isParcel || order.tableNumber === 'Takeaway' ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold px-2.5 py-0.5 rounded uppercase tracking-wider shrink-0" title="Parcel Order">
+                              <ShoppingBag className="w-3.5 h-3.5 text-amber-400" /> Parcel
+                            </span>
+                          ) : (
+                            <span className="text-xs bg-[#1a1a1a] text-zinc-400 font-semibold px-2 py-0.5 rounded whitespace-nowrap shrink-0">
+                              Table {order.tableNumber}
+                            </span>
+                          )}
                         </div>
                         <p className="text-[10px] text-zinc-650 uppercase tracking-wider font-semibold mt-1">
                           Status: {order.status}
@@ -698,7 +710,7 @@ export default function KitchenKDS() {
                     {/* Card Actions */}
                     {order.status !== 'completed' && order.status !== 'cancelled' && (
                       <div className="border-t border-[#222222] pt-4 mt-2">
-                        {order.status === 'pending' && (
+                        {(order.status === 'pending' || order.status === 'accepted') && (
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleStartCookingAll(order)}

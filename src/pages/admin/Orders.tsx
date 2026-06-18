@@ -10,14 +10,13 @@ import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { useOrders } from '../../hooks/useOrders';
 import { updateOrderStatus, verifyOrderPayment } from '../../firebase/db';
-import { doc, writeBatch } from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import { formatTimeAgo, formatCurrency } from '../../utils/formatters';
 import { useNow } from '../../hooks/useNow';
+import { PlaceOrderModal } from '../../components/admin/PlaceOrderModal';
 import toast from 'react-hot-toast';
 import type { Order } from '../../types';
 
-const STATUS_TABS = ['all', 'pending', 'accepted', 'completed', 'cancelled', 'extra'] as const;
+const STATUS_TABS = ['all', 'pending', 'accepted', 'completed', 'parcel', 'extra'] as const;
 type StatusTab = typeof STATUS_TABS[number];
 
 export default function Orders() {
@@ -29,6 +28,7 @@ export default function Orders() {
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | 'month'>('today');
   const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('oldest');
+  const [isPlaceOrderOpen, setIsPlaceOrderOpen] = useState(false);
   const currency = restaurant?.currency ?? '₹';
   useNow(1000); // tick every second to keep formatTimeAgo live
 
@@ -44,10 +44,12 @@ export default function Orders() {
     if (ts < dateThreshold) return false;
     if (activeTab !== 'all') {
       if (activeTab === 'accepted') {
-        if (o.status !== 'preparing' && o.status !== 'ready') return false;
+        if (o.status !== 'accepted' && o.status !== 'preparing' && o.status !== 'ready') return false;
       } else if (activeTab === 'extra') {
         if (o.status === 'completed' || o.status === 'cancelled') return false;
         if (!o.items.some(i => i.isExtra)) return false;
+      } else if (activeTab === 'parcel') {
+        if (!o.isParcel) return false;
       } else {
         if (o.status !== activeTab) return false;
       }
@@ -62,12 +64,17 @@ export default function Orders() {
 
   const acceptedCount = orders.filter(o => {
     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
-    return (o.status === 'preparing' || o.status === 'ready') && ts >= dateThreshold;
+    return (o.status === 'accepted' || o.status === 'preparing' || o.status === 'ready') && ts >= dateThreshold;
   }).length;
 
   const extraCount = orders.filter(o => {
     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
     return o.status !== 'completed' && o.status !== 'cancelled' && o.items.some(i => i.isExtra) && ts >= dateThreshold;
+  }).length;
+
+  const parcelCount = orders.filter(o => {
+    const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
+    return o.isParcel && ts >= dateThreshold;
   }).length;
 
   const sortedFiltered = [...filtered].sort((a, b) => {
@@ -77,7 +84,12 @@ export default function Orders() {
   });
 
   async function advance(order: Order) {
-    const next: Record<string, Order['status']> = { pending: 'preparing', preparing: 'ready', ready: 'completed' };
+    const next: Record<string, Order['status']> = {
+      pending: 'accepted',
+      accepted: 'preparing',
+      preparing: 'ready',
+      ready: 'completed'
+    };
     const s = next[order.status];
     if (!s) return;
     try {
@@ -85,7 +97,8 @@ export default function Orders() {
         await updateOrderStatus(restaurantId, order.id, s);
       }
       toast.success(t('orders.updateStatus'));
-    } catch {
+    } catch (err) {
+      console.error('Failed to update order status:', err);
       toast.error('Failed to update order status');
     }
   }
@@ -96,18 +109,16 @@ export default function Orders() {
         await updateOrderStatus(restaurantId, order.id, 'cancelled');
       }
       toast.success(t('orders.updateStatus'));
-    } catch {
+    } catch (err) {
+      console.error('Failed to cancel order:', err);
       toast.error('Failed to cancel order');
     }
   }
 
   async function markPaid(order: Order) {
-    if (!order.sessionId) {
-      toast.error('Payment session not found for this order');
-      return;
-    }
     try {
       if (!isDemo && restaurantId) {
+        // verifyOrderPayment handles session lookup internally; sessionId is optional
         await verifyOrderPayment(restaurantId, order.id, order.sessionId);
       }
       toast.success('Payment marked as paid');
@@ -120,18 +131,27 @@ export default function Orders() {
   return (
     <div className="bg-[#0a0a0a] min-h-screen">
       <AdminHeader title={t('header.title.orders')}>
-        <Link
-          to="/admin/requests"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1a1a1a] text-[#a1a1aa] hover:text-white border border-[#2a2a2a] transition-all duration-150"
-        >
-          <Bell className="w-3.5 h-3.5 text-[#ef4444]" />
-          <span>Requests</span>
-          {pendingRequestsCount > 0 && (
-            <span className="w-4 h-4 bg-[#ef4444] text-white text-[9px] rounded-full flex items-center justify-center font-bold">
-              {pendingRequestsCount}
-            </span>
-          )}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setIsPlaceOrderOpen(true)}
+            className="bg-[#22c55e] text-black hover:bg-[#1ea34d] font-bold text-xs py-1.5 px-3 rounded-lg border-none shadow transition-all duration-150"
+          >
+            + Place Order
+          </Button>
+          <Link
+            to="/admin/requests"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1a1a1a] text-[#a1a1aa] hover:text-white border border-[#2a2a2a] transition-all duration-150"
+          >
+            <Bell className="w-3.5 h-3.5 text-[#ef4444]" />
+            <span>Requests</span>
+            {pendingRequestsCount > 0 && (
+              <span className="w-4 h-4 bg-[#ef4444] text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                {pendingRequestsCount}
+              </span>
+            )}
+          </Link>
+        </div>
       </AdminHeader>
       <div className="p-6 space-y-5">
         {/* Filters */}
@@ -143,13 +163,13 @@ export default function Orders() {
                 onClick={() => setActiveTab(tab)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 relative ${
                   activeTab === tab
-                    ? tab === 'extra'
+                    ? tab === 'extra' || tab === 'parcel'
                       ? 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b]'
                       : 'bg-[rgba(34,197,94,0.15)] text-[#22c55e]'
                     : 'bg-[#1a1a1a] text-[#a1a1aa] hover:text-white'
                 }`}
               >
-                {tab === 'all' ? 'All' : tab === 'extra' ? 'Extra' : t(`orders.status.${tab}`)}
+                {tab === 'all' ? 'All' : tab === 'extra' ? 'Extra' : tab === 'parcel' ? 'Parcel' : t(`orders.status.${tab}`)}
                 {tab === 'pending' && pendingCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#ef4444] text-white text-[9px] rounded-full flex items-center justify-center">{pendingCount}</span>
                 )}
@@ -158,6 +178,9 @@ export default function Orders() {
                 )}
                 {tab === 'extra' && extraCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#f59e0b] text-black text-[9px] rounded-full flex items-center justify-center font-bold animate-pulse">{extraCount}</span>
+                )}
+                {tab === 'parcel' && parcelCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#f59e0b] text-black text-[9px] rounded-full flex items-center justify-center font-bold animate-pulse">{parcelCount}</span>
                 )}
               </button>
             ))}
@@ -209,6 +232,7 @@ export default function Orders() {
           </div>
         )}
       </div>
+      <PlaceOrderModal open={isPlaceOrderOpen} onClose={() => setIsPlaceOrderOpen(false)} />
     </div>
   );
 }
@@ -222,9 +246,6 @@ function OrderCard({ order, allOrders, currency, onAdvance, onCancel, onMarkPaid
   onMarkPaid: (o: Order) => void;
   t: (key: string) => string;
 }) {
-  const { language } = useI18n();
-  const acceptLabel = language === 'te' ? 'ఆమోదించు' : language === 'hi' ? 'स्वीकार करें' : 'Accept';
-
   const getOrderNumber = () => {
     if (order.dailyOrderId) return order.dailyOrderId;
     
@@ -254,7 +275,7 @@ function OrderCard({ order, allOrders, currency, onAdvance, onCancel, onMarkPaid
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-white font-semibold whitespace-nowrap shrink-0">
-              Order #{getOrderNumber()} • {t('generic.table')} {order.tableNumber}
+              Order #{getOrderNumber()}{!(order.isParcel || order.tableNumber === 'Takeaway') && ` • ${t('generic.table')} ${order.tableNumber}`}
             </p>
             {order.paymentStatus && (
               <Badge 
@@ -269,8 +290,15 @@ function OrderCard({ order, allOrders, currency, onAdvance, onCancel, onMarkPaid
                 Extra Added
               </Badge>
             )}
+            {order.isParcel && (
+              <Badge variant="amber" className="text-[10px] py-0 px-1.5 leading-tight uppercase font-bold tracking-wider whitespace-nowrap shrink-0">
+                Parcel
+              </Badge>
+            )}
           </div>
-          <p className="text-[#a1a1aa] text-xs mt-0.5 truncate">{order.customerName}</p>
+          {order.customerName && !order.customerName.toLowerCase().includes('walk-in') && !order.customerName.toLowerCase().includes('walk in') && (
+            <p className="text-[#a1a1aa] text-xs mt-0.5 truncate">{order.customerName}</p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <Badge variant={statusBadge(order.status)} className="shrink-0 whitespace-nowrap">{t(`orders.status.${order.status}`)}</Badge>
@@ -312,9 +340,9 @@ function OrderCard({ order, allOrders, currency, onAdvance, onCancel, onMarkPaid
         <span className="text-white font-semibold">{formatCurrency(order.totalAmount, currency)}</span>
       </div>
 
-      {(order.status === 'pending' || order.status === 'preparing' || order.status === 'ready') && (
+      {(order.status === 'pending' || order.status === 'accepted' || order.status === 'preparing' || order.status === 'ready') && (
         <div className="flex flex-wrap gap-2">
-          {(order.paymentStatus === 'unpaid' || order.paymentStatus === 'verifying') && order.sessionId && (
+          {(order.paymentStatus === 'unpaid' || order.paymentStatus === 'verifying') && (
             <Button 
               size="sm" 
               variant={order.paymentStatus === 'verifying' ? 'primary' : 'outline'} 
@@ -331,16 +359,26 @@ function OrderCard({ order, allOrders, currency, onAdvance, onCancel, onMarkPaid
           {order.status === 'pending' && (
             <>
               <Button size="sm" className="flex-1" onClick={() => onAdvance(order)}>
-                {acceptLabel}
+                Accept Order
               </Button>
               <Button size="sm" variant="ghost" className="text-[#ef4444] hover:bg-red-500/10" onClick={() => onCancel(order)}>
-                {t('generic.cancel')}
+                Reject
+              </Button>
+            </>
+          )}
+          {order.status === 'accepted' && (
+            <>
+              <Button size="sm" variant="outline" className="flex-1 border-amber-500 text-amber-400 hover:bg-amber-500/10" onClick={() => onAdvance(order)}>
+                Start Cooking
+              </Button>
+              <Button size="sm" variant="ghost" className="text-[#ef4444] hover:bg-red-500/10" onClick={() => onCancel(order)}>
+                Reject
               </Button>
             </>
           )}
           {order.status === 'preparing' && (
             <>
-              <Button size="sm" variant="outline" className="flex-1 border-amber-500 text-amber-400 hover:bg-amber-500/10" onClick={() => onAdvance(order)}>
+              <Button size="sm" variant="outline" className="flex-1 border-emerald-500 text-emerald-400 hover:bg-emerald-500/10" onClick={() => onAdvance(order)}>
                 {t('orders.status.ready')}
               </Button>
               <Button size="sm" variant="ghost" className="text-[#ef4444] hover:bg-red-500/10" onClick={() => onCancel(order)}>

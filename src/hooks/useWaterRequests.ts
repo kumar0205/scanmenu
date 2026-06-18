@@ -36,7 +36,7 @@ export function useWaterRequests(
       // Only trigger notification sounds/banners if we are subscribing to active/pending requests
       if (statusFilter === 'pending' && !isFirstLoad.current) {
         const newRequests = incoming.filter(
-          r => !prevIdsRef.current.has(r.id) && r.status === 'pending'
+          r => !prevIdsRef.current.has(r.id) && r.status === 'pending' && r.type !== 'payment'
         );
         if (newRequests.length > 0) {
           playNotification(restaurantRef.current?.notificationSoundUrl);

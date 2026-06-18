@@ -29,6 +29,7 @@ export function Badge({ variant = 'gray', children, className }: BadgeProps) {
 export function statusBadge(status: string) {
   const map: Record<string, BadgeVariant> = {
     pending: 'amber',
+    accepted: 'blue',
     preparing: 'blue',
     ready: 'green',
     completed: 'gray',

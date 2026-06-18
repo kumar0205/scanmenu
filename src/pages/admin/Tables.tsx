@@ -8,19 +8,9 @@ import { Modal } from '../../components/ui/Modal';
 import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { subscribeToTables, addTable, updateTable, deleteTable } from '../../firebase/db';
+import { generateQRDataURL } from '../../utils/qr';
 import toast from 'react-hot-toast';
 import type { Table } from '../../types';
-
-function generateQRDataURL(url: string): Promise<string> {
-  return import('qrcode').then(QRCode =>
-    QRCode.toDataURL(url, {
-      width: 300,
-      margin: 2,
-      color: { dark: '#000000', light: '#ffffff' },
-      errorCorrectionLevel: 'M',
-    })
-  );
-}
 
 function getTableQrToken(table: Table): string {
   return table.qrToken || table.id.substring(0, 4);

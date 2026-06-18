@@ -3,9 +3,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     function isSuperAdmin() {
-      return request.auth != null && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin';
+      return request.auth != null && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superAdmin') ||
+        request.auth.token.email == 'cjvkumarraja@gmail.com'
+      );
     }
 
     function isRestaurantOwner(restaurantId) {
@@ -34,28 +36,35 @@ service cloud.firestore {
       // Checkout links are bearer URLs, so allow direct reads and client-side creation.
       allow get: if true;
       allow list: if false;
-      allow create: if request.resource.data.status == 'pending_payment';
+      allow create: if (
+        request.auth != null && (
+          (request.resource.data.restaurantId is string && isRestaurantOwner(request.resource.data.restaurantId)) ||
+          isSuperAdmin()
+        )
+      ) || (
+        request.resource.data.status == 'pending_payment' &&
+        request.resource.data.orderId is string &&
+        request.resource.data.restaurantId is string &&
+        exists(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/orders/$(request.resource.data.orderId)) &&
+        request.resource.data.totalAmount == get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/orders/$(request.resource.data.orderId)).data.totalAmount &&
+        request.resource.data.items == get(/databases/$(database)/documents/restaurants/$(request.resource.data.restaurantId)/orders/$(request.resource.data.orderId)).data.items
+      );
       allow update: if request.auth != null && (
         isRestaurantOwner(resource.data.restaurantId) ||
         isSuperAdmin() ||
         (
-          ((!('customerId' in resource.data) && get(/databases/$(database)/documents/restaurants/$(resource.data.restaurantId)/orders/$(resource.data.orderId)).data.customerId == request.auth.uid) ||
-           (resource.data.customerId == request.auth.uid)) &&
+          resource.data.customerId == request.auth.uid &&
           resource.data.status == 'pending_payment' &&
           request.resource.data.status == 'pending_payment' &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'totalAmount', 'userConfirmedPayment']) &&
           (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['items', 'totalAmount']) ||
             (
-              request.resource.data.items is list &&
-              request.resource.data.items.size() > 0 &&
-              request.resource.data.totalAmount is number &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userConfirmedPayment']) &&
+              request.resource.data.userConfirmedPayment == true
+            ) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'totalAmount']) &&
               request.resource.data.totalAmount >= resource.data.totalAmount
             )
-          ) &&
-          (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['userConfirmedPayment']) ||
-            request.resource.data.userConfirmedPayment == true
           )
         )
       );
@@ -72,14 +81,18 @@ service cloud.firestore {
       match /categories/{categoryId} { allow read: if true; allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); }
       match /tables/{tableId} {
         allow get: if true;
-        allow list: if false;
+        allow list: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
         allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       }
       
-      // Public / Customer writable collections
+      // Public / Customer writable collections (securely restricted to increments of 1 only)
       match /dailyCounters/{dateStr} {
         allow read: if true;
-        allow write: if true;
+        allow create: if request.resource.data.keys().hasOnly(['count']) &&
+                      request.resource.data.count == 1;
+        allow update: if request.resource.data.keys().hasOnly(['count']) &&
+                      request.resource.data.count == resource.data.count + 1;
+        allow delete: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       }
       
       match /requests/{requestId} { 
@@ -95,19 +108,23 @@ service cloud.firestore {
 
         // Orders can be created directly by authenticated customers under their own customerId.
         // Enforce initial status to prevent customer from bypassing payment or setting statuses maliciously.
-        allow create: if request.auth != null && 
-          request.resource.data.customerId == request.auth.uid &&
-          request.resource.data.status == 'pending' &&
-          request.resource.data.paymentStatus == 'unpaid' &&
-          request.resource.data.items is list &&
-          request.resource.data.items.size() > 0 &&
-          request.resource.data.totalAmount is number &&
-          request.resource.data.totalAmount >= 0;
+        allow create: if request.auth != null && (
+          isRestaurantOwner(restaurantId) ||
+          isSuperAdmin() ||
+          (
+            request.resource.data.customerId == request.auth.uid &&
+            request.resource.data.status == 'pending' &&
+            request.resource.data.paymentStatus == 'unpaid' &&
+            request.resource.data.items is list &&
+            request.resource.data.items.size() > 0 &&
+            request.resource.data.totalAmount is number &&
+            request.resource.data.totalAmount >= 0
+          )
+        );
 
         // Restaurant owner or super admin can update or delete.
         allow update, delete: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
 
-        // Customer can only update their own ratingSubmitted, paymentStatus (to verifying), or items & totalAmount when unpaid and active.
         allow update: if request.auth != null &&
           resource.data.customerId == request.auth.uid &&
           (
@@ -123,13 +140,8 @@ service cloud.firestore {
             ||
             (
               resource.data.paymentStatus == 'unpaid' &&
-              resource.data.status in ['pending', 'preparing'] &&
-              request.resource.data.status == resource.data.status &&
-              request.resource.data.paymentStatus == resource.data.paymentStatus &&
+              (resource.data.status == 'pending' || resource.data.status == 'accepted' || resource.data.status == 'preparing' || resource.data.status == 'ready') &&
               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'totalAmount', 'updatedAt']) &&
-              request.resource.data.items is list &&
-              request.resource.data.items.size() > 0 &&
-              request.resource.data.totalAmount is number &&
               request.resource.data.totalAmount >= resource.data.totalAmount
             )
           );
@@ -153,6 +165,18 @@ service cloud.firestore {
           request.resource.data.rewardClaimed in ['discount', 'dessert', null] &&
           request.resource.data.verified == false;
         allow update, delete: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); 
+      }
+
+      match /analytics/{dateStr} {
+        allow read, write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
+      }
+
+      match /analyticsMonthly/{monthStr} {
+        allow read, write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
+      }
+
+      match /customers/{customerId} {
+        allow read, write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       }
     }
   }

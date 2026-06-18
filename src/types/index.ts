@@ -83,20 +83,24 @@ export interface OrderItem {
   isVeg: boolean;
   isExtra?: boolean;
   status?: 'pending' | 'preparing' | 'ready';
+  categoryId?: string;
+  categoryName?: string;
 }
 
 export interface Order {
   id: string;
+  customerId?: string;
   customerName: string;
   tableId: string;
   tableNumber: string;
   items: OrderItem[];
   totalAmount: number;
-  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   note: string;
   ratingSubmitted: boolean;
   sessionId?: string;
   paymentStatus?: 'unpaid' | 'verifying' | 'paid';
+  isParcel?: boolean;
   createdAt: Timestamp;
   dailyOrderId?: number;
   orderDate?: string;
@@ -138,3 +142,52 @@ export interface WaterRequest {
   dailyOrderId?: number;
   customerName?: string;
 }
+
+export interface DayAnalytics {
+  date: string;
+  dayOfWeek: string;
+  totalOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+  totalRevenue: number;
+  averageOrderValue: number;
+  peakHour: string;
+  bestHour?: string;
+  highestSingleOrder: number;
+  bestSellingItem: string;
+  hourlyRevenue: Record<string, number>;
+  topItems: Record<string, number>;
+  topItemsRevenue?: Record<string, number>;
+  categoryRevenue: Record<string, number>;
+  categoryItems: Record<string, number>;
+  repeatCustomers?: number;
+  averageItemsPerOrder?: number;
+  itemsCountSum?: number;
+  insights: any[];
+}
+
+export interface MonthAnalytics {
+  month: string;
+  daysElapsed: number;
+  totalRevenue: number;
+  totalOrders: number;
+  topItems: Record<string, number>;
+  topItemsRevenue?: Record<string, number>;
+  categoryRevenue: Record<string, number>;
+  weekdayAverages: Record<string, number>;
+  weekdayRevenue?: Record<string, number>;
+  weekdayCounts?: Record<string, number>;
+  uniqueDates?: string[];
+  bestDay: string;
+  highestRevenueDay: number;
+  dailyRevenueTrend?: Record<string, number>;
+  lastUpdated: string;
+  bestHour?: string;
+  peakHour?: string;
+  highestSingleOrder?: number;
+  hourlyRevenue?: Record<string, number>;
+  repeatCustomers?: number;
+  averageItemsPerOrder?: number;
+  itemsCountSum?: number;
+}
+

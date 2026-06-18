@@ -3,7 +3,11 @@ import { persist } from 'zustand/middleware';
 import type { MenuItem, OrderItem } from '../types';
 
 export type CartItem = OrderItem & { imageUrl: string };
-type CartInput = Pick<MenuItem, 'id' | 'name' | 'price' | 'isVeg' | 'imageUrl'> & { qty?: number };
+type CartInput = Pick<MenuItem, 'id' | 'name' | 'price' | 'isVeg' | 'imageUrl'> & {
+  qty?: number;
+  categoryId?: string;
+  categoryName?: string;
+};
 
 interface CartState {
   cart: CartItem[];
@@ -57,7 +61,9 @@ export const useCartStore = create<CartState>()(
             price: item.price,
             qty: qtyToAdd,
             isVeg: item.isVeg,
-            imageUrl: item.imageUrl
+            imageUrl: item.imageUrl,
+            categoryId: item.categoryId || '',
+            categoryName: item.categoryName || 'Uncategorized'
           }],
         };
       }),

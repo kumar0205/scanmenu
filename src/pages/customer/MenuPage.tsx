@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, memo } from 'react';
-import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Search, ShoppingBag, Plus, Minus, X, Utensils, Home, Star, Clock, MapPin, Phone, History, Flame, Leaf, Sparkles, ChevronRight, ArrowUpDown, Menu, Loader2 } from 'lucide-react';
 import { Timestamp, doc, setDoc, onSnapshot, collection, serverTimestamp, updateDoc, runTransaction } from 'firebase/firestore';
 import toast from 'react-hot-toast';
@@ -9,7 +9,7 @@ import { createWaterRequest, getTableById } from '../../firebase/db';
 import { db, auth } from '../../firebase/config';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { formatCurrency } from '../../utils/formatters';
-import type { MenuItem, Order } from '../../types';
+import type { MenuItem, Order, Category } from '../../types';
 import { useCartStore } from '../../store/useCartStore';
 import { BlurImage } from '../../components/ui/BlurImage';
 let top3SetCache: Set<string> = new Set();
@@ -94,9 +94,9 @@ export default function MenuPage() {
   const [placing, setPlacing] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [activeOrdersVersion, setActiveOrdersVersion] = useState(0);
-  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [requestCooldown, setRequestCooldown] = useState(0);
+  const [isParcel, setIsParcel] = useState(false);
 
   // States for dynamic Water options modal
   const [waterModalOpen, setWaterModalOpen] = useState(false);
@@ -142,13 +142,15 @@ export default function MenuPage() {
     if (!hasFirebase) return;
     const storedStr = localStorage.getItem('scanmenu_active_orders');
     if (!storedStr) return;
-    let stored: Array<{ sessionId: string; orderId: string; tableNumber?: string }> = [];
+    let stored: Array<{ sessionId: string; orderId: string; tableNumber?: string; isParcel?: boolean }> = [];
     try { stored = JSON.parse(storedStr); } catch (e) { console.error(e); }
-    const filtered = stored.filter(o => o.tableNumber === tableNumber);
-    const pruned = stored.filter(o => o.tableNumber && o.tableNumber !== tableNumber);
-    if (pruned.length > 0) {
-      const cleaned = stored.filter(o => !o.tableNumber || o.tableNumber === tableNumber);
-      localStorage.setItem('scanmenu_active_orders', JSON.stringify(cleaned));
+    const filtered = stored.filter(o => !tableNumber || o.tableNumber === tableNumber || o.isParcel || o.tableNumber === 'Takeaway');
+    if (tableNumber) {
+      const pruned = stored.filter(o => o.tableNumber && o.tableNumber !== tableNumber && !o.isParcel && o.tableNumber !== 'Takeaway');
+      if (pruned.length > 0) {
+        const cleaned = stored.filter(o => !o.tableNumber || o.tableNumber === tableNumber || o.isParcel || o.tableNumber === 'Takeaway');
+        localStorage.setItem('scanmenu_active_orders', JSON.stringify(cleaned));
+      }
     }
     if (filtered.length === 0) return;
     const unsubs: Array<() => void> = [];
@@ -217,6 +219,12 @@ export default function MenuPage() {
 
     return () => window.removeEventListener('scroll', handleScroll);
   }, [categories, search, items]);
+
+  useEffect(() => {
+    if (tableNumber) {
+      localStorage.setItem('scanmenu_last_table', tableNumber);
+    }
+  }, [tableNumber]);
 
   useEffect(() => {
     if (!categoryTabsRef.current) return;
@@ -333,24 +341,30 @@ export default function MenuPage() {
             const cp = menuItem.comboPrices?.find(c => c.persons === pax);
             if (!cp) continue;
             
+            const cat = categories.find(c => c.id === menuItem.categoryId);
             updatedItems.push({
               itemId: itemId,
               name: `${menuItem.name} (${cp.persons} Person${cp.persons > 1 ? 's' : ''})`,
               price: cp.price,
               qty: qtyToAdd,
               isVeg: menuItem.isVeg,
-              isExtra: true
+              isExtra: true,
+              categoryId: menuItem.categoryId,
+              categoryName: cat ? cat.name : 'Uncategorized'
             });
           } else {
             const menuItem = items.find(i => i.id === itemId);
             if (!menuItem) continue;
+            const cat = categories.find(c => c.id === menuItem.categoryId);
             updatedItems.push({
               itemId: menuItem.id,
               name: menuItem.name,
               price: menuItem.price,
               qty: qtyToAdd,
               isVeg: menuItem.isVeg,
-              isExtra: true
+              isExtra: true,
+              categoryId: menuItem.categoryId,
+              categoryName: cat ? cat.name : 'Uncategorized'
             });
           }
         }
@@ -408,7 +422,9 @@ export default function MenuPage() {
           price: opt.price,
           qty: qty,
           isVeg: true,
-          isExtra: true
+          isExtra: true,
+          categoryId: 'addon-water',
+          categoryName: 'Beverages'
         });
       }
       
@@ -455,66 +471,9 @@ export default function MenuPage() {
         currentUid = userCred.user.uid;
       }
 
-      // Check if there is an active unpaid order for this table
-      const unpaidActiveOrder = activeOrders.find(
-        (o) =>
-          o.paymentStatus === 'unpaid' &&
-          (o.status === 'pending' || o.status === 'preparing')
-      );
+      // Placing an order always creates a new order because orders are immutable after creation
 
-      if (unpaidActiveOrder) {
-        // Append cart items to the existing active order
-        const updatedItems = [...unpaidActiveOrder.items.map(item => ({ ...item }))];
-        
-        for (const cartItem of cart) {
-          const existingExtra = updatedItems.find(i => i.itemId === cartItem.itemId && i.isExtra);
-          if (existingExtra) {
-            existingExtra.qty += cartItem.qty;
-          } else {
-            updatedItems.push({
-              itemId: cartItem.itemId,
-              name: cartItem.name,
-              price: cartItem.price,
-              qty: cartItem.qty,
-              isVeg: cartItem.isVeg,
-              isExtra: true
-            });
-          }
-        }
-        
-        const newSubtotal = updatedItems.reduce((acc, item) => acc + item.price * item.qty, 0);
-        const cgst = restaurant.tax?.cgstEnabled ? (restaurant.tax.cgstPercent / 100) : 0;
-        const sgst = restaurant.tax?.sgstEnabled ? (restaurant.tax.sgstPercent / 100) : 0;
-        const newTotal = Math.round(newSubtotal * (1 + cgst + sgst) * 100) / 100;
-        
-        if (hasFirebase) {
-          const orderRef = doc(db, 'restaurants', restaurant.id, 'orders', unpaidActiveOrder.id);
-          await updateDoc(orderRef, {
-            items: updatedItems,
-            totalAmount: newTotal,
-            updatedAt: Timestamp.now()
-          });
-          
-          if (unpaidActiveOrder.sessionId) {
-            const sessionRef = doc(db, 'sessions', unpaidActiveOrder.sessionId);
-            await updateDoc(sessionRef, {
-              items: updatedItems.map(item => ({
-                name: item.name,
-                price: item.price,
-                qty: item.qty
-              })),
-              totalAmount: newTotal
-            });
-          }
-        }
-        
-        clearCart();
-        setCartOpen(false);
-        toast.success('Items added to your active order!');
-        setActiveTab('history');
-        setActiveOrdersVersion(v => v + 1);
-        return;
-      }
+
 
       // If no active unpaid order, place a new order
       const sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -558,6 +517,7 @@ export default function MenuPage() {
         sessionId,
         dailyOrderId,
         orderDate,
+        isParcel,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -583,13 +543,17 @@ export default function MenuPage() {
       });
 
       const activeOrdersList = JSON.parse(localStorage.getItem('scanmenu_active_orders') || '[]');
-      activeOrdersList.push({ sessionId, orderId, tableNumber });
+      activeOrdersList.push({ sessionId, orderId, tableNumber, isParcel });
       localStorage.setItem('scanmenu_active_orders', JSON.stringify(activeOrdersList));
       localStorage.setItem('scanmenu_locked_table', tableNumber);
+      if (tableNumber) {
+        localStorage.setItem('scanmenu_last_table', tableNumber);
+      }
       localStorage.setItem('lastOrderId', orderId);
       localStorage.setItem('lastRestaurantSlug', restaurantSlug ?? '');
 
       clearCart();
+      setIsParcel(false);
       setCartOpen(false);
       toast.success('Order placed!');
       setActiveTab('history');
@@ -938,7 +902,7 @@ export default function MenuPage() {
                 ) : (
                   <div className="grid grid-cols-1 gap-4 pt-8">
                     {filteredItems.map(item => (
-                      <ItemCard key={item.id} item={item} qty={getQty(item.id)} onAdd={addToCart} onRemove={removeFromCart} currency={restaurant?.currency ?? '₹'} />
+                      <ItemCard key={item.id} item={item} qty={getQty(item.id)} onAdd={addToCart} onRemove={removeFromCart} currency={restaurant?.currency ?? '₹'} categories={categories} />
                     ))}
                   </div>
                 )
@@ -965,7 +929,7 @@ export default function MenuPage() {
                       ) : (
                         <div className="grid grid-cols-1 gap-4">
                           {catItems.map(item => (
-                            <ItemCard key={item.id} item={item} qty={getQty(item.id)} onAdd={addToCart} onRemove={removeFromCart} currency={restaurant?.currency ?? '₹'} />
+                            <ItemCard key={item.id} item={item} qty={getQty(item.id)} onAdd={addToCart} onRemove={removeFromCart} currency={restaurant?.currency ?? '₹'} categories={categories} />
                           ))}
                         </div>
                       )}
@@ -1027,7 +991,7 @@ export default function MenuPage() {
               </div>
             ) : (
               <div className="space-y-4 pb-20">
-                {activeOrders.filter(order => !tableNumber || order.tableNumber === tableNumber).map(order => (
+                {activeOrders.filter(order => !tableNumber || order.tableNumber === tableNumber || order.isParcel || order.tableNumber === 'Takeaway').map(order => (
                   <div key={order.id} className="bg-white border border-stone-200 rounded-xl p-4 space-y-3 shadow-sm text-left">
                     <div className="flex items-start justify-between">
                       <div>
@@ -1041,12 +1005,14 @@ export default function MenuPage() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${order.status === 'pending' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                          order.status === 'preparing' ? 'bg-stone-50 text-stone-750 border border-stone-200' :
-                            order.status === 'ready' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-500'
+                          order.status === 'accepted' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                            order.status === 'preparing' ? 'bg-stone-50 text-stone-750 border border-stone-200' :
+                              order.status === 'ready' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-500'
                           }`}>
                           {order.status === 'pending' ? 'Pending' :
-                            order.status === 'preparing' ? 'In Kitchen' :
-                              order.status === 'ready' ? 'Ready' : order.status}
+                            order.status === 'accepted' ? 'Accepted' :
+                              order.status === 'preparing' ? 'In Kitchen' :
+                                order.status === 'ready' ? 'Ready' : order.status}
                         </span>
                         <span className={`px-3 py-1 rounded-full text-[11px] font-semibold ${
                           order.paymentStatus === 'paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
@@ -1072,6 +1038,7 @@ export default function MenuPage() {
                     </div>
                     <div className="mt-4 space-y-4">
                       {order.paymentStatus === 'unpaid' && (
+                        (order.status === 'pending' || order.status === 'accepted' || order.status === 'preparing' || order.status === 'ready') ? (
                           <div className="grid grid-cols-2 gap-2">
                             <button
                               onClick={() => {
@@ -1087,7 +1054,12 @@ export default function MenuPage() {
                               Pay / Checkout
                             </Link>
                           </div>
-                        )}
+                        ) : (
+                          <Link to={`/pay/${order.sessionId}`} className="block text-center bg-[#c86214] hover:bg-[#b05612] text-white font-bold py-3 px-2 rounded-lg text-xs transition shadow-sm flex items-center justify-center w-full">
+                            Pay / Checkout
+                          </Link>
+                        )
+                      )}
                         {order.paymentStatus === 'verifying' && (
                           <div className="text-center bg-blue-50 text-blue-750 font-bold py-3 rounded-lg text-xs border border-blue-200">
                             Awaiting Admin Confirmation
@@ -1156,7 +1128,7 @@ export default function MenuPage() {
                           <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-full p-0.5 min-h-[32px]">
                             <button onClick={() => removeFromCart(item.itemId)} className="w-7 h-7 rounded-full bg-stone-50 flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors"><Minus className="h-3 w-3" /></button>
                             <span className="w-4 text-center text-xs font-bold text-stone-900">{item.qty}</span>
-                            <button onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })} className="w-7 h-7 rounded-full bg-stone-900 flex items-center justify-center text-white hover:bg-stone-800 transition-colors"><Plus className="h-3 w-3" /></button>
+                            <button onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1, categoryId: item.categoryId, categoryName: item.categoryName })} className="w-7 h-7 rounded-full bg-stone-900 flex items-center justify-center text-white hover:bg-stone-800 transition-colors"><Plus className="h-3 w-3" /></button>
                           </div>
                         )}
                       </div>
@@ -1283,7 +1255,7 @@ export default function MenuPage() {
                           </button>
                           <span className="w-3 text-center text-[13px] font-bold text-stone-900">{item.qty}</span>
                           <button
-                            onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1 })}
+                            onClick={() => addToCart({ id: item.itemId, name: item.name, price: item.price, isVeg: item.isVeg, imageUrl: item.imageUrl, qty: 1, categoryId: item.categoryId, categoryName: item.categoryName })}
                             className="h-[26px] w-[26px] rounded-full bg-[#1a1814] flex items-center justify-center text-white hover:bg-black transition-colors"
                           >
                             <Plus className="h-3 w-3" />
@@ -1316,6 +1288,25 @@ export default function MenuPage() {
                     onChange={e => setCustomerName(e.target.value)}
                     placeholder="Enter your name"
                     className="w-full bg-white border border-stone-200 rounded-[6px] px-3 py-2 text-[13px] mt-1.5 focus:outline-none focus:border-[#c86214] focus:ring-1 focus:ring-[#c86214] text-stone-900"
+                  />
+                </div>
+                <div 
+                  onClick={() => setIsParcel(!isParcel)}
+                  className="flex items-center justify-between py-1 pt-1.5 border-t border-stone-100 cursor-pointer select-none"
+                >
+                  <span className="text-[13px] font-semibold text-stone-700">Parcel this order</span>
+                  <input
+                    type="checkbox"
+                    checked={isParcel}
+                    onChange={e => {
+                      e.stopPropagation();
+                      setIsParcel(e.target.checked);
+                    }}
+                    onClick={e => {
+                      // Prevent onClick from bubbling up and double-toggling
+                      e.stopPropagation();
+                    }}
+                    className="w-4 h-4 text-amber-600 bg-white border-stone-300 rounded focus:ring-0 cursor-pointer accent-amber-500"
                   />
                 </div>
               </div>
@@ -1582,7 +1573,9 @@ export default function MenuPage() {
                           price: opt.price,
                           qty: waterQty,
                           isVeg: true,
-                          imageUrl: ''
+                          imageUrl: '',
+                          categoryId: 'addon-water',
+                          categoryName: 'Beverages'
                         });
                         toast.success(`Request sent! Added ${waterQty}x Water Bottle (${opt.ml}) to cart.`);
                         setCartOpen(true);
@@ -1777,17 +1770,22 @@ const ItemCard = memo(function ItemCard({
   onAdd,
   onRemove,
   currency,
+  categories,
 }: {
   item: MenuItem;
   qty: number;
-  onAdd: (i: MenuItem) => void;
+  onAdd: (i: any) => void;
   onRemove: (id: string) => void;
   currency: string;
+  categories: Category[];
 }) {
   const isTop = isItemTopRated(item);
   const cart = useCartStore(state => state.cart);
   const addToCart = useCartStore(state => state.addToCart);
   const removeFromCart = useCartStore(state => state.removeFromCart);
+
+  const cat = categories.find(c => c.id === item.categoryId);
+  const categoryName = cat ? cat.name : 'Uncategorized';
 
   return (
     <article className={`bg-white rounded-xl border border-stone-200 p-3 flex gap-3 text-left ${!item.isAvailable ? 'opacity-65' : ''}`}>
@@ -1796,7 +1794,7 @@ const ItemCard = memo(function ItemCard({
           <div className="flex items-center gap-2 mb-1">
             {item.isVeg ? (
               <div className="flex items-center justify-center w-3.5 h-3.5 border border-green-600 rounded-sm">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-600" />
+                <div className="w-1.5 h-1.5 rounded-full bg-green-650" />
               </div>
             ) : (
               <div className="flex items-center justify-center w-3.5 h-3.5 border border-red-600 rounded-sm">
@@ -1830,7 +1828,9 @@ const ItemCard = memo(function ItemCard({
                     price: cp.price,
                     isVeg: item.isVeg,
                     imageUrl: item.imageUrl,
-                    qty: 1
+                    qty: 1,
+                    categoryId: item.categoryId,
+                    categoryName: categoryName
                   });
                 };
 
@@ -1893,8 +1893,8 @@ const ItemCard = memo(function ItemCard({
             </div>
           ) : qty === 0 ? (
             <button
-              onClick={() => onAdd(item)}
-              className="w-full py-2 rounded-full bg-stone-900 border border-stone-900 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1 hover:bg-stone-800 uppercase tracking-wide transition-colors min-h-[40px]"
+              onClick={() => onAdd({ ...item, categoryId: item.categoryId, categoryName })}
+              className="w-full py-2 rounded-full bg-stone-900 border border-stone-900 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1 hover:bg-stone-850 uppercase tracking-wide transition-colors min-h-[40px]"
             >
               Add
               <Plus className="w-3 h-3" />
@@ -1909,7 +1909,7 @@ const ItemCard = memo(function ItemCard({
               </button>
               <span className="text-sm font-bold text-stone-900 w-6 text-center">{qty}</span>
               <button
-                onClick={() => onAdd(item)}
+                onClick={() => onAdd({ ...item, categoryId: item.categoryId, categoryName })}
                 className="w-9 h-9 rounded-full bg-stone-900 flex items-center justify-center text-white hover:bg-stone-800 transition-colors shadow-sm"
               >
                 <Plus className="w-4 h-4" />
