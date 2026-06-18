@@ -21,16 +21,20 @@ export function Modal({ open, onClose, title, children, className, bodyClassName
 
   if (!open) return null;
 
+  // Determine if caller has provided their own max-w-* class
+  const hasMaxWidth = className && /max-w-/.test(className);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
         className={clsx(
-          'relative z-10 bg-[#111111] border border-[#2a2a2a] rounded-xl shadow-2xl w-full max-w-lg',
+          'relative z-10 bg-[#111111] border border-[#2a2a2a] rounded-xl shadow-2xl w-full my-auto',
           'animate-in slide-in-from-bottom-4 duration-200',
+          !hasMaxWidth && 'max-w-lg',
           className
         )}
       >

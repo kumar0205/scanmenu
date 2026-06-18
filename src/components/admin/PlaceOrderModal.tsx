@@ -305,10 +305,10 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
       open={open}
       onClose={onClose}
       title="Place Manual Order"
-      className="max-w-4xl w-full h-[90vh] flex flex-col"
-      bodyClassName="flex-1 flex flex-col overflow-hidden p-0"
+      className="max-w-5xl w-full max-h-[90vh] flex flex-col"
+      bodyClassName="flex-1 flex flex-col overflow-hidden p-0 min-h-0"
     >
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0" style={{ height: 'calc(90vh - 72px)' }}>
         
         {/* Left Column: Menu Browsing */}
         <div className={`flex-1 flex flex-col border-r border-[#2a2a2a] bg-[#0d0d0d] overflow-hidden ${
@@ -368,7 +368,7 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
                 No items found matching criteria.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {filteredItems.map(item => {
                   const categoryName = categories.find(c => c.id === item.categoryId)?.name ?? '';
                   const inCartQty = item.isCombo ? 0 : (cart.find(c => c.itemId === item.id)?.qty ?? 0);
@@ -495,7 +495,7 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
         </div>
 
         {/* Right Column: Checkout Info & Selected Items */}
-        <div className={`w-full md:w-80 flex flex-col bg-[#111111] overflow-hidden ${
+        <div className={`w-full md:w-96 flex flex-col bg-[#111111] overflow-hidden shrink-0 ${
           mobileTab === 'cart' ? 'flex' : 'hidden md:flex'
         }`}>
           

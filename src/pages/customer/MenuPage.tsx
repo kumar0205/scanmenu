@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, memo } from 'react';
+import { useState, useRef, useEffect, useMemo, memo, useCallback, useDeferredValue } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { Search, ShoppingBag, Plus, Minus, X, Utensils, Home, Star, Clock, MapPin, Phone, History, Flame, Leaf, Sparkles, ChevronRight, ArrowUpDown, Menu, Loader2 } from 'lucide-react';
 import { Timestamp, doc, setDoc, onSnapshot, collection, serverTimestamp, updateDoc, runTransaction } from 'firebase/firestore';
@@ -89,7 +89,7 @@ export default function MenuPage() {
   }, [items]);
 
   const [search, setSearch] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
+  const deferredSearch = useDeferredValue(search);
   const [activeCategory, setActiveCategory] = useState('all');
   const [placing, setPlacing] = useState(false);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
@@ -188,7 +188,7 @@ export default function MenuPage() {
 
   // Active category scroll tracking
   useEffect(() => {
-    if (search || categories.length === 0) return;
+    if (deferredSearch || categories.length === 0) return;
 
     const handleScroll = () => {
       if (window.scrollY < 100) {
@@ -196,8 +196,8 @@ export default function MenuPage() {
         return;
       }
 
-      // Approximately the height of sticky headers (header 60 + filters 48 + nav 50 + padding)
-      const offset = 180;
+      // Approximately the height of sticky headers (header 60 + search 53 + filters 48 + nav 50 + padding)
+      const offset = 220;
       let currentActive = 'all';
 
       for (const cat of categories) {
@@ -218,7 +218,7 @@ export default function MenuPage() {
     handleScroll();
 
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [categories, search, items]);
+  }, [categories, deferredSearch, items]);
 
   useEffect(() => {
     if (tableNumber) {
@@ -244,13 +244,13 @@ export default function MenuPage() {
     if (vegFilter === 'veg' && !i.isVeg) return false;
     if (vegFilter === 'nonveg' && i.isVeg) return false;
     if (popularFilter && !isItemTopRated(i)) return false;
-    if (search && !i.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (deferredSearch && !i.name.toLowerCase().includes(deferredSearch.toLowerCase())) return false;
     return true;
   }).sort((a, b) => {
     if (priceSort === 'asc') return a.price - b.price;
     if (priceSort === 'desc') return b.price - a.price;
     return 0;
-  }), [activeItems, vegFilter, popularFilter, search, priceSort]);
+  }), [activeItems, vegFilter, popularFilter, deferredSearch, priceSort]);
   const waterOptions = useMemo(() => {
     if (!restaurant?.waterBottle?.enabled) return [];
     if (restaurant.waterBottle.options && restaurant.waterBottle.options.length > 0) {
@@ -267,9 +267,9 @@ export default function MenuPage() {
     }
   }, [waterOptions, selectedWaterOptId]);
 
-  function getQty(itemId: string) {
+  const getQty = useCallback((itemId: string) => {
     return cart.filter(c => c.itemId === itemId || c.itemId.startsWith(itemId + '-combo-')).reduce((s, i) => s + i.qty, 0);
-  }
+  }, [cart]);
 
   function requestWaterBottle() {
     if (requestCooldown > 0) {
@@ -690,15 +690,6 @@ export default function MenuPage() {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {activeTab === 'menu' && (
-                <button
-                  onClick={() => { if (searchOpen) setSearch(''); setSearchOpen(!searchOpen); }}
-                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-all ${searchOpen ? 'bg-amber-50 text-amber-800' : 'bg-white/70 border border-stone-200 text-stone-600 hover:bg-stone-100'}`}
-                  aria-label="Search"
-                >
-                  {searchOpen ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
-                </button>
-              )}
 
               <button
                 onClick={() => setCartOpen(true)}
@@ -717,7 +708,7 @@ export default function MenuPage() {
         </header>
 
         {/* ===== DESKTOP LEFT RAIL ===== */}
-        {activeTab === 'menu' && !searchOpen && (
+        {activeTab === 'menu' && !search && (
           <aside className="hidden md:block w-64 shrink-0 sticky top-24 h-[calc(100vh-8rem)] overflow-y-auto scrollbar-none pb-12 border-r border-stone-200/60 pr-6">
             <h3 className="font-bold text-lg mb-4 text-stone-900 font-display px-2">Menu Index</h3>
             <ul className="space-y-1">
@@ -777,36 +768,29 @@ export default function MenuPage() {
           </section>
         )}
 
-        {/* ===== SEARCH INPUT ===== */}
-        {activeTab === 'menu' && searchOpen && (
-          <div className="px-5 py-2.5 bg-stone-50 sticky top-[60px] z-30 flex items-center gap-2">
-            <div className="relative flex-1 rounded-lg bg-white border border-stone-200 shadow-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+        {/* ===== SEARCH BAR ===== */}
+        {activeTab === 'menu' && (
+          <div className="px-4 py-2.5 bg-stone-50 sticky top-[60px] z-30">
+            <div className="relative rounded-xl bg-white border border-stone-200 shadow-sm flex items-center">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
               <input
-                autoFocus
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search for dishes..."
-                className="w-full bg-transparent rounded-lg pl-10 pr-8 py-2 text-sm focus:outline-none text-stone-900 placeholder:text-stone-400"
+                placeholder="Search dishes..."
+                className="w-full bg-transparent rounded-xl pl-10 pr-9 py-2.5 text-sm focus:outline-none text-stone-900 placeholder:text-stone-400"
               />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600">
+                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
-            <button
-              onClick={() => { setSearch(''); setSearchOpen(false); }}
-              className="text-sm font-medium text-stone-600 hover:text-stone-900 px-1"
-            >
-              Cancel
-            </button>
           </div>
         )}
 
         {/* ===== FILTER PILLS ===== */}
-        {activeTab === 'menu' && !searchOpen && (
-          <div className="sticky top-[60px] z-30 bg-stone-50 border-b border-stone-200/60 py-2.5 px-5">
+        {activeTab === 'menu' && (
+          <div className="sticky top-[113px] z-30 bg-stone-50 border-b border-stone-200/60 py-2.5 px-5">
             <div className="flex gap-2 overflow-x-auto scrollbar-none">
               <button
                 onClick={() => setPriceSort(prev => prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none')}
@@ -837,8 +821,8 @@ export default function MenuPage() {
         )}
 
         {/* ===== CATEGORY NAV ===== */}
-        {activeTab === 'menu' && !searchOpen && (
-          <nav className="sticky top-[108px] z-30 bg-stone-50/95 backdrop-blur-sm border-b border-stone-200 py-2.5 px-5">
+        {activeTab === 'menu' && !search && (
+          <nav className="sticky top-[161px] z-30 bg-stone-50/95 backdrop-blur-sm border-b border-stone-200 py-2.5 px-5">
             <div ref={categoryTabsRef} className="flex items-center gap-1.5 overflow-x-auto scrollbar-none relative">
               <button
                 data-active={activeCategory === 'all' ? 'true' : 'false'}
@@ -870,7 +854,7 @@ export default function MenuPage() {
         {activeTab === 'menu' ? (
           <>
             {/* Water/Waiter Buttons */}
-            {!search && (restaurant?.waterBottle?.enabled || restaurant?.callWaiter?.enabled) && (
+            {!deferredSearch && (restaurant?.waterBottle?.enabled || restaurant?.callWaiter?.enabled) && (
               <div className="px-5 pt-4 pb-1 flex flex-col gap-3">
                 {restaurant?.waterBottle?.enabled && (
                   <button onClick={requestWaterBottle} className="w-full py-3 px-4 rounded-xl text-sm font-bold bg-blue-50 text-blue-600 hover:bg-blue-100 transition shadow-sm flex items-center justify-center gap-2">
@@ -893,7 +877,7 @@ export default function MenuPage() {
                     <ItemCardSkeleton key={i} />
                   ))}
                 </div>
-              ) : search ? (
+              ) : deferredSearch ? (
                 filteredItems.length === 0 ? (
                   <div className="text-center py-20 bg-white border border-stone-200 rounded-2xl mt-6 px-4">
                     <Search className="w-10 h-10 text-stone-300 mx-auto mb-3" />
@@ -1370,7 +1354,7 @@ export default function MenuPage() {
         {restaurant && (
           <div className="fixed bottom-0 left-0 right-0 z-40 pointer-events-none flex flex-col justify-end max-w-[480px] mx-auto transition-all">
             
-            {activeTab === 'menu' && !searchOpen && categories.length > 0 && (
+            {activeTab === 'menu' && !search && categories.length > 0 && (
               <div className="w-full flex justify-end px-5 mb-4 pointer-events-auto md:hidden">
                 <button
                   onClick={() => setMobileMenuOpen(true)}

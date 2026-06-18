@@ -74,7 +74,7 @@ export default function Orders() {
 
   const parcelCount = orders.filter(o => {
     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
-    return o.isParcel && ts >= dateThreshold;
+    return o.isParcel && o.status !== 'completed' && o.status !== 'cancelled' && ts >= dateThreshold;
   }).length;
 
   const sortedFiltered = [...filtered].sort((a, b) => {
