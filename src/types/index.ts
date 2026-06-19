@@ -123,8 +123,17 @@ export interface User {
   restaurantId: string;
   email: string;
   displayName: string;
-  role: 'owner';
+  role: 'owner' | 'chef' | 'waiter';
   createdAt: Timestamp;
+  lastLoginAt?: Timestamp;
+}
+
+export interface StaffConfig {
+  chefUid?: string;
+  chefPinHash?: string;
+  waiterUid?: string;
+  waiterPinHash?: string;
+  updatedAt?: Timestamp;
 }
 
 export interface WaterRequest {

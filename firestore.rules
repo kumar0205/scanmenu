@@ -12,22 +12,58 @@ service cloud.firestore {
 
     function isRestaurantOwner(restaurantId) {
       return request.auth != null && (
+        // Case 1: restaurant document ID equals the owner's UID (standard registration)
         request.auth.uid == restaurantId ||
+        // Case 2: restaurant has an ownerId field pointing to the current user
         (exists(/databases/$(database)/documents/restaurants/$(restaurantId)) &&
-         get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerId == request.auth.uid)
+         get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerId == request.auth.uid) ||
+        // Case 3: check via users/{uid}.restaurantId for edge-case account setups
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner' &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.restaurantId == restaurantId)
       );
     }
 
+    // ─── Staff helpers ────────────────────────────────────────────────────────
+    function isChef(restaurantId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'chef' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.restaurantId == restaurantId;
+    }
+
+    function isWaiter(restaurantId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'waiter' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.restaurantId == restaurantId;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isSuperAdmin());
-      allow create: if request.auth != null && request.auth.uid == userId && (
-        (request.resource.data.role == 'owner') ||
-        (request.resource.data.role == 'superAdmin' && request.auth.token.email == 'cjvkumarraja@gmail.com')
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(userId)) &&
+         isRestaurantOwner(get(/databases/$(database)/documents/users/$(userId)).data.restaurantId))
       );
-      allow update: if request.auth != null && request.auth.uid == userId && (
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])) ||
-        (request.resource.data.role == resource.data.role) ||
-        (request.resource.data.role == 'superAdmin' && request.auth.token.email == 'cjvkumarraja@gmail.com')
+      allow create: if request.auth != null && (
+        (request.auth.uid == userId && (
+          request.resource.data.role == 'owner' ||
+          (request.resource.data.role == 'superAdmin' && request.auth.token.email == 'cjvkumarraja@gmail.com')
+        )) ||
+        // Owner or SuperAdmin can create staff (chef/waiter) documents
+        ((isRestaurantOwner(request.resource.data.restaurantId) || isSuperAdmin()) &&
+          (request.resource.data.role == 'chef' || request.resource.data.role == 'waiter'))
+      );
+      allow update: if request.auth != null && (
+        (request.auth.uid == userId && (
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])) ||
+          (request.resource.data.role == resource.data.role)
+        )) ||
+        // Owner or SuperAdmin can update staff (chef/waiter) documents
+        ((isRestaurantOwner(resource.data.restaurantId) || isSuperAdmin()) &&
+          (request.resource.data.role == 'chef' || request.resource.data.role == 'waiter'))
       );
       allow delete: if isSuperAdmin();
     }
@@ -84,6 +120,15 @@ service cloud.firestore {
         allow list: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
         allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       }
+
+      // ─── Private subcollection — owner-only ──────────────────────────────
+      // Stores staffConfig (chefUid, chefPinHash, waiterUid, waiterPinHash)
+      // and loginAttempts (rate limit counters).
+      // Cloud Functions (Admin SDK) bypass these rules for write access during staff provisioning.
+      match /private/{doc} {
+        allow read, write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
+      }
+      // ─────────────────────────────────────────────────────────────────────
       
       // Public / Customer writable collections (securely restricted to increments of 1 only)
       match /dailyCounters/{dateStr} {
@@ -96,15 +141,31 @@ service cloud.firestore {
       }
       
       match /requests/{requestId} { 
-        allow read: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); 
+        allow read: if request.auth != null && (
+          isRestaurantOwner(restaurantId) || isSuperAdmin() ||
+          isChef(restaurantId) || isWaiter(restaurantId)
+        );
         allow create: if request.auth != null;
-        allow update, delete: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); 
+        // Owner/SuperAdmin: full update/delete
+        // Waiter: can only mark status = 'completed' (resolve a request)
+        allow update: if request.auth != null && (
+          isRestaurantOwner(restaurantId) || isSuperAdmin() ||
+          (isWaiter(restaurantId) &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+           request.resource.data.status == 'completed')
+        );
+        allow delete: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       }
+
       match /orders/{orderId} {
-        allow read: if request.auth != null &&
-          (isRestaurantOwner(restaurantId) ||
-           isSuperAdmin() ||
-           resource.data.customerId == request.auth.uid);
+        // Read: owner, superAdmin, chef, waiter, or the customer who placed it
+        allow read: if request.auth != null && (
+          isRestaurantOwner(restaurantId) ||
+          isSuperAdmin() ||
+          isChef(restaurantId) ||
+          isWaiter(restaurantId) ||
+          resource.data.customerId == request.auth.uid
+        );
 
         // Orders can be created directly by authenticated customers under their own customerId.
         // Enforce initial status to prevent customer from bypassing payment or setting statuses maliciously.
@@ -125,6 +186,33 @@ service cloud.firestore {
         // Restaurant owner or super admin can update or delete.
         allow update, delete: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
 
+        // Chef: can update item status and transition order status between accepted, preparing, and ready
+        allow update: if isChef(restaurantId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'items', 'updatedAt']) &&
+          (resource.data.status == 'accepted' || resource.data.status == 'preparing' || resource.data.status == 'ready') &&
+          (request.resource.data.status == 'preparing' || request.resource.data.status == 'ready') &&
+          request.resource.data.items is list &&
+          request.resource.data.items.size() == resource.data.items.size();
+
+        // Waiter: can accept (pending→accepted), cancel active orders, and confirm payment
+        allow update: if isWaiter(restaurantId) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'paymentStatus', 'updatedAt']) &&
+          (
+            // Accept order (pending -> accepted)
+            (resource.data.status == 'pending' && request.resource.data.status == 'accepted') ||
+            // Start cooking (accepted -> preparing)
+            (resource.data.status == 'accepted' && request.resource.data.status == 'preparing') ||
+            // Cancel any active (non-terminal) order
+            ((resource.data.status == 'pending' || resource.data.status == 'accepted' || resource.data.status == 'preparing' || resource.data.status == 'ready') &&
+             request.resource.data.status == 'cancelled') ||
+            // Confirm payment (verifying -> paid)
+            (resource.data.paymentStatus == 'verifying' &&
+             request.resource.data.paymentStatus == 'paid' &&
+             request.resource.data.status == resource.data.status)
+          );
+
+        // Customer updates: rating, payment verification, extra items
         allow update: if request.auth != null &&
           resource.data.customerId == request.auth.uid &&
           (

@@ -1,3 +1,4 @@
+import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   QrCode, LayoutDashboard, UtensilsCrossed, ClipboardList,
@@ -13,13 +14,39 @@ import { useAuthContext } from '../../context/AuthContext';
 import { useI18n } from '../../context/I18nContext';
 import { usePWA } from '../../hooks/usePWA';
 
+const ALL_NAV_ITEMS: ReadonlyArray<{
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  roles: readonly string[];
+  countKey?: string;
+}> = [
+  { to: '/admin/dashboard', icon: LayoutDashboard, label: 'nav.dashboard',   roles: ['owner', 'superAdmin'] },
+  { to: '/admin/menu',      icon: UtensilsCrossed,  label: 'nav.menu',        roles: ['owner', 'superAdmin'] },
+  { to: '/admin/requests',  icon: Bell,              label: 'Requests',        roles: ['owner', 'superAdmin', 'waiter'], countKey: 'requests' },
+  { to: '/admin/orders',    icon: ClipboardList,     label: 'nav.orders',      roles: ['owner', 'superAdmin', 'waiter'], countKey: 'orders' },
+  { to: '/admin/kitchen',   icon: ChefHat,           label: 'Kitchen KDS',     roles: ['owner', 'superAdmin', 'chef', 'waiter'] },
+  { to: '/admin/tables',    icon: Grid3X3,           label: 'nav.tables',      roles: ['owner', 'superAdmin'] },
+  { to: '/admin/ratings',   icon: Star,              label: 'nav.ratings',     roles: ['owner', 'superAdmin'] },
+  { to: '/admin/analytics', icon: TrendingUp,        label: 'nav.analytics',   roles: ['owner', 'superAdmin'] },
+  { to: '/admin/settings',  icon: Settings,          label: 'nav.settings',    roles: ['owner', 'superAdmin'] },
+];
+
+const ROLE_BADGE: Record<string, { emoji: string; label: string; color: string }> = {
+  owner:      { emoji: '👑', label: 'Owner',  color: '#f59e0b' },
+  superAdmin: { emoji: '⚡', label: 'Admin',  color: '#a855f7' },
+  chef:       { emoji: '👨‍🍳', label: 'Chef',   color: '#22c55e' },
+  waiter:     { emoji: '🧑‍🍽️', label: 'Waiter', color: '#3b82f6' },
+};
+
 export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const navigate = useNavigate();
-  const { restaurantId, isDemo } = useAuthContext();
+  const { restaurantId, userRole, isDemo } = useAuthContext();
   const { orders } = useOrders(restaurantId);
   const { requests } = useWaterRequests(restaurantId);
   const { t } = useI18n();
   const { isInstallable, isStandalone, installApp, isIOS } = usePWA();
+
   const today = new Date().setHours(0, 0, 0, 0);
   const pendingCount = orders.filter(o => {
     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
@@ -27,17 +54,21 @@ export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: ()
   }).length;
   const pendingRequestsCount = requests.filter(r => r.status === 'pending').length;
 
-  const navItems = [
-    { to: '/admin/dashboard', icon: LayoutDashboard, label: t('nav.dashboard') },
-    { to: '/admin/menu', icon: UtensilsCrossed, label: t('nav.menu') },
-    { to: '/admin/requests', icon: Bell, label: 'Requests', count: pendingRequestsCount },
-    { to: '/admin/orders', icon: ClipboardList, label: t('nav.orders'), count: pendingCount },
-    { to: '/admin/kitchen', icon: ChefHat, label: 'Kitchen KDS' },
-    { to: '/admin/tables', icon: Grid3X3, label: t('nav.tables') },
-    { to: '/admin/ratings', icon: Star, label: t('nav.ratings') },
-    { to: '/admin/analytics', icon: TrendingUp, label: t('nav.analytics') || 'Analytics' },
-    { to: '/admin/settings', icon: Settings, label: t('nav.settings') },
-  ];
+  // Filter nav items by current role
+  const navItems = ALL_NAV_ITEMS
+    .filter(item => !userRole || (item.roles as readonly string[]).includes(userRole))
+    .map(item => ({
+      to: item.to,
+      icon: item.icon,
+      label: t(item.label) || item.label,
+      count: item.countKey === 'orders'
+        ? pendingCount
+        : item.countKey === 'requests'
+        ? pendingRequestsCount
+        : undefined,
+    }));
+
+  const roleBadge = userRole ? ROLE_BADGE[userRole] : null;
 
   async function handleSignOut() {
     if (isDemo) {
@@ -60,6 +91,18 @@ export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: ()
         {isDemo && (
           <span className="ml-auto text-[10px] bg-[rgba(245,158,11,0.15)] text-[#f59e0b] border border-[rgba(245,158,11,0.3)] px-2 py-0.5 rounded-full font-medium">
             DEMO
+          </span>
+        )}
+        {!isDemo && roleBadge && (
+          <span
+            className="ml-auto text-[10px] px-2 py-0.5 rounded-full font-semibold border"
+            style={{
+              color: roleBadge.color,
+              background: `${roleBadge.color}18`,
+              borderColor: `${roleBadge.color}40`,
+            }}
+          >
+            {roleBadge.emoji} {roleBadge.label}
           </span>
         )}
       </div>
@@ -90,8 +133,8 @@ export function AdminSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: ()
         ))}
       </nav>
 
-      {/* PWA Install Widget in Sidebar */}
-      {!isStandalone && (isInstallable || isIOS) && (
+      {/* PWA Install Widget — only for owner */}
+      {(userRole === 'owner' || userRole === 'superAdmin') && !isStandalone && (isInstallable || isIOS) && (
         <div className="m-3 p-3 bg-[#161616] border border-[#2a2a2a] rounded-xl flex flex-col gap-2">
           <div className="flex gap-2 items-start">
             <div className="p-1.5 bg-[#22c55e]/10 border border-[#22c55e]/20 text-[#22c55e] rounded-lg shrink-0">

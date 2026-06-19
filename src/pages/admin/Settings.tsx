@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Settings as SettingsIcon, Star, Gift, AlertTriangle, Loader2,
   Link2, ExternalLink, Droplets, Bell, X, Plus, Globe,
-  Volume2, Play, Square, Trash2, Smartphone, Download, Percent
+  Volume2, Play, Square, Trash2, Smartphone, Download, Percent, Users, Copy, CheckCircle, Lock
 } from 'lucide-react';
+
 import { Capacitor } from '@capacitor/core';
 import { AdminHeader } from '../../components/layout/AdminHeader';
 import { Button } from '../../components/ui/Button';
@@ -15,8 +16,10 @@ import { useI18n } from '../../context/I18nContext';
 import { updateRestaurant, deleteAllMenuItems } from '../../firebase/db';
 import { uploadToCloudinary } from '../../utils/cloudinary';
 import { usePWA } from '../../hooks/usePWA';
+import { provisionStaffAccount, getStaffStatus } from '../../firebase/staffAuth';
 import toast from 'react-hot-toast';
 import type { Restaurant } from '../../types';
+
 
 type RewardSettings = Restaurant['rewards'];
 
@@ -65,6 +68,15 @@ export default function Settings() {
   const coverFilesRef = useRef<HTMLInputElement>(null);
   const [coverImages, setCoverImages] = useState<string[]>(restaurant?.coverImages ?? (restaurant?.coverImageUrl ? [restaurant.coverImageUrl] : []));
   const [coverUploadPct, setCoverUploadPct] = useState<number | null>(null);
+
+  // Staff Access state
+  const [staffStatus, setStaffStatus] = useState({ chefActive: false, waiterActive: false });
+  const [staffSetupRole, setStaffSetupRole] = useState<'chef' | 'waiter' | null>(null);
+  const [staffPin, setStaffPin] = useState('');
+  const [staffPinConfirm, setStaffPinConfirm] = useState('');
+  const [staffSaving, setStaffSaving] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+
   
   // Custom sound state and refs
   const [soundUrl, setSoundUrl] = useState(restaurant?.notificationSoundUrl ?? '');
@@ -81,6 +93,12 @@ export default function Settings() {
     : window.location.origin;
 
   const menuUrl = `${origin}/${restaurant?.slug}`;
+
+  useEffect(() => {
+    if (restaurantId) {
+      getStaffStatus(restaurantId).then(setStaffStatus).catch(() => {});
+    }
+  }, [restaurantId]);
 
   useEffect(() => {
     if (restaurant) {
@@ -968,6 +986,144 @@ export default function Settings() {
               </p>
             </div>
           )}
+        </section>
+
+        {/* Staff Access */}
+        <section className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+          <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
+            <Users className="w-4 h-4 text-[#22c55e]" /> Staff Access
+          </h3>
+          <p className="text-[#52525b] text-xs mb-5">
+            Give kitchen and waiting staff PIN-based access. They use the Restaurant Code + their PIN to sign in.
+          </p>
+
+          {/* Restaurant Code */}
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+            <p className="text-[#a1a1aa] text-xs font-semibold uppercase tracking-wider mb-2">Restaurant Code</p>
+            <div className="flex items-center gap-3">
+              <code className="text-white font-mono text-lg font-bold flex-1">{restaurant?.slug ?? '—'}</code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(restaurant?.slug ?? '');
+                  setCodeCopied(true);
+                  setTimeout(() => setCodeCopied(false), 2000);
+                }}
+                className="flex items-center gap-1.5 text-xs text-[#22c55e] hover:underline transition-all"
+              >
+                {codeCopied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {codeCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-[#52525b] text-[10px] mt-1.5">Share this with your kitchen &amp; waiting staff</p>
+          </div>
+
+          {/* Chef + Waiter PIN rows */}
+          {(['chef', 'waiter'] as const).map(role => {
+            const isActive = role === 'chef' ? staffStatus.chefActive : staffStatus.waiterActive;
+            const isEditing = staffSetupRole === role;
+            const emoji = role === 'chef' ? '👨‍🍳' : '🧑‍🍽️';
+            const label = role === 'chef' ? 'Chef' : 'Waiter';
+
+            return (
+              <div key={role} className="border border-[#2a2a2a] rounded-xl p-4 mb-3 bg-[#0d0d0d]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{emoji}</span>
+                    <div>
+                      <p className="text-white text-sm font-semibold">{label}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-[#22c55e]' : 'bg-[#52525b]'}`}
+                        />
+                        <span className="text-[#71717a] text-xs">
+                          {isActive ? 'Active' : 'Not set up'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {!isEditing && (
+                    <button
+                      onClick={() => {
+                        setStaffSetupRole(role);
+                        setStaffPin('');
+                        setStaffPinConfirm('');
+                      }}
+                      className="text-xs text-[#22c55e] hover:underline font-medium flex items-center gap-1"
+                    >
+                      <Lock className="w-3 h-3" />
+                      {isActive ? 'Change PIN' : 'Set up'}
+                    </button>
+                  )}
+                </div>
+
+                {isEditing && (
+                  <div className="mt-4 pt-4 border-t border-[#2a2a2a] space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-[#a1a1aa] block mb-1">
+                        {isActive ? 'New PIN' : 'Set PIN'} (4–8 digits)
+                      </label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        pattern="\d{4,8}"
+                        maxLength={8}
+                        placeholder="Enter PIN"
+                        value={staffPin}
+                        onChange={e => setStaffPin(e.target.value.replace(/\D/g, ''))}
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#22c55e] font-mono tracking-widest"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-[#a1a1aa] block mb-1">Confirm PIN</label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={8}
+                        placeholder="Confirm PIN"
+                        value={staffPinConfirm}
+                        onChange={e => setStaffPinConfirm(e.target.value.replace(/\D/g, ''))}
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#22c55e] font-mono tracking-widest"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          if (staffPin.length < 4) { toast.error('PIN must be at least 4 digits'); return; }
+                          if (staffPin !== staffPinConfirm) { toast.error('PINs do not match'); return; }
+                          if (!restaurantId) return;
+                          setStaffSaving(true);
+                          try {
+                            await provisionStaffAccount(restaurantId, role, staffPin);
+                            const updated = await getStaffStatus(restaurantId);
+                            setStaffStatus(updated);
+                            toast.success(`${label} ${isActive ? 'PIN updated' : 'account created'}!`);
+                            setStaffSetupRole(null);
+                            setStaffPin('');
+                            setStaffPinConfirm('');
+                          } catch (err: unknown) {
+                            toast.error(err instanceof Error ? err.message : 'Failed to save');
+                          } finally {
+                            setStaffSaving(false);
+                          }
+                        }}
+                        disabled={staffSaving}
+                        className="flex-1 bg-[#22c55e] hover:bg-[#1ea34d] disabled:opacity-50 text-black font-bold text-sm py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
+                      >
+                        {staffSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        {isActive ? 'Update PIN' : 'Create Account'}
+                      </button>
+                      <button
+                        onClick={() => { setStaffSetupRole(null); setStaffPin(''); setStaffPinConfirm(''); }}
+                        className="px-4 py-2 text-sm text-[#71717a] hover:text-white border border-[#2a2a2a] rounded-lg transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </section>
 
         {/* Danger Zone */}

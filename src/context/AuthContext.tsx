@@ -97,6 +97,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 localStorage.setItem('scanmenu_superadmin_active_restaurant', r.id);
               }
             }
+          } else if (role === 'chef' || role === 'waiter') {
+            // Staff: restaurantId is stored in users/{uid}.restaurantId
+            const staffRestaurantId = userDoc.exists() ? userDoc.data().restaurantId : null;
+            if (staffRestaurantId) {
+              const rDoc = await getDoc(doc(db, 'restaurants', staffRestaurantId));
+              if (rDoc.exists() && isMounted) {
+                r = { id: rDoc.id, ...rDoc.data() } as Restaurant;
+              }
+            }
           } else {
             r = await getRestaurantByOwnerId(u.uid);
           }

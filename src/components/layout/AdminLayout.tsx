@@ -17,7 +17,8 @@ export function AdminLayout() {
   }
 
   // In demo mode, always allow access
-  if (!isDemo && (!user || user.isAnonymous || (userRole !== 'owner' && userRole !== 'superAdmin'))) return <Navigate to="/login" replace />;
+  const ALLOWED_ROLES = ['owner', 'superAdmin', 'chef', 'waiter'];
+  if (!isDemo && (!user || user.isAnonymous || !ALLOWED_ROLES.includes(userRole ?? ''))) return <Navigate to="/login" replace />;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col lg:flex-row">

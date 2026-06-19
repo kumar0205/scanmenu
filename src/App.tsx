@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext';
 import { I18nProvider } from './context/I18nContext';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { SuperAdminLayout } from './components/layout/SuperAdminLayout';
+import { RoleGuard } from './components/layout/RoleGuard';
 
 const Landing = lazy(() => import('./pages/Landing'));
 const Login = lazy(() => import('./pages/Login'));
@@ -52,16 +53,28 @@ export default function App() {
 
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
-                <Route path="menu" element={<Menu />} />
-                <Route path="orders" element={<Orders />} />
-                <Route path="requests" element={<Requests />} />
-                <Route path="tables" element={<Tables />} />
-                <Route path="ratings" element={<Ratings />} />
-                <Route path="analytics" element={<Analytics />} />
-                <Route path="subscription" element={<Subscription />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="kitchen" element={<KitchenKDS />} />
+
+                {/* Owner + SuperAdmin only */}
+                <Route element={<RoleGuard allowedRoles={['owner', 'superAdmin']} />}>
+                  <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="menu" element={<Menu />} />
+                  <Route path="tables" element={<Tables />} />
+                  <Route path="ratings" element={<Ratings />} />
+                  <Route path="analytics" element={<Analytics />} />
+                  <Route path="subscription" element={<Subscription />} />
+                  <Route path="settings" element={<Settings />} />
+                </Route>
+
+                {/* Owner + Waiter */}
+                <Route element={<RoleGuard allowedRoles={['owner', 'superAdmin', 'waiter']} />}>
+                  <Route path="orders" element={<Orders />} />
+                  <Route path="requests" element={<Requests />} />
+                </Route>
+
+                {/* Owner + Chef + Waiter */}
+                <Route element={<RoleGuard allowedRoles={['owner', 'superAdmin', 'chef', 'waiter']} />}>
+                  <Route path="kitchen" element={<KitchenKDS />} />
+                </Route>
               </Route>
 
               {/* SUPER ADMIN ROUTES */}
