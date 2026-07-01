@@ -430,13 +430,13 @@ export default function Menu() {
   }
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen">
+    <div className="bg-[#F8FAFC] dark:bg-premium-bg min-h-screen text-slate-900 dark:text-premium-text transition-colors duration-200">
       <AdminHeader title={t('header.title.menu')} />
       <div className="p-6 space-y-6">
         {/* Categories */}
-        <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+        <div className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-xl p-5 shadow-sm dark:shadow-premium">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">Categories</h3>
+            <h3 className="text-slate-950 dark:text-premium-text font-semibold">Categories</h3>
             <Button variant="outline" size="sm" onClick={() => setCatModal(true)}>
               <FolderPlus className="w-4 h-4" /> {t('menu.addCategory')}
             </Button>
@@ -447,8 +447,8 @@ export default function Menu() {
               onClick={() => setActiveCategory('all')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 ${
                 activeCategory === 'all'
-                  ? 'bg-[rgba(34,197,94,0.15)] border border-[rgba(34,197,94,0.3)] text-[#22c55e]'
-                  : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#a1a1aa] hover:text-white'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-250 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold'
+                  : 'bg-slate-55 dark:bg-premium-bg border border-slate-200 dark:border-premium-border text-slate-600 dark:text-premium-muted hover:text-slate-950 dark:hover:text-premium-text'
               }`}
             >
               All
@@ -482,17 +482,17 @@ export default function Menu() {
                   onClick={() => setActiveCategory(cat.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 cursor-grab active:cursor-grabbing ${
                     activeCategory === cat.id
-                      ? 'bg-[rgba(34,197,94,0.15)] border border-[rgba(34,197,94,0.3)] text-[#22c55e]'
-                      : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#a1a1aa] hover:text-white'
-                  } ${isDragging ? 'opacity-40 scale-95 border-dashed border-[#22c55e]' : ''} ${
-                    isOver ? 'border-[#22c55e] bg-[#22c55e]/10 scale-105' : ''
+                      ? 'bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-250 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold'
+                      : 'bg-slate-55 dark:bg-premium-bg border border-slate-200 dark:border-premium-border text-slate-600 dark:text-premium-muted hover:text-slate-950 dark:hover:text-premium-text'
+                  } ${isDragging ? 'opacity-40 scale-95 border-dashed border-emerald-500' : ''} ${
+                    isOver ? 'border-emerald-500 bg-emerald-500/10 scale-105' : ''
                   }`}
                 >
-                  <span className="text-[#52525b] mr-0.5 select-none font-bold">⋮⋮</span>
+                  <span className="text-slate-400 dark:text-premium-muted mr-0.5 select-none font-bold">⋮⋮</span>
                   {cat.name}
                   <button
                     onClick={e => { e.stopPropagation(); handleDeleteCategory(cat); }}
-                    className="ml-0.5 text-[#52525b] hover:text-[#ef4444]"
+                    className="ml-0.5 text-slate-400 dark:text-premium-muted hover:text-[#ef4444]"
                   >×</button>
                 </button>
               );
@@ -501,9 +501,9 @@ export default function Menu() {
         </div>
 
         {/* Menu Items */}
-        <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+        <div className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-xl p-5 shadow-sm dark:shadow-premium">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">{t('dashboard.menuItems')} ({filtered.length})</h3>
+            <h3 className="text-slate-950 dark:text-premium-text font-semibold">{t('dashboard.menuItems')} ({filtered.length})</h3>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setBulkModal(true)}>
                 <Zap className="w-4 h-4 text-[#22c55e]" /> CSV Import
@@ -521,7 +521,7 @@ export default function Menu() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-12">
               <UtensilsIcon />
-              <p className="text-white font-medium mt-3">{t('menu.noItems')}</p>
+              <p className="text-slate-500 dark:text-premium-muted font-medium mt-3">{t('menu.noItems')}</p>
               <Button className="mt-4" size="sm" onClick={openAddItem}><Plus className="w-4 h-4" /> {t('menu.addItem')}</Button>
             </div>
           ) : (
@@ -529,30 +529,30 @@ export default function Menu() {
               {filtered.map(item => {
                 const cat = categories.find(c => c.id === item.categoryId);
                 return (
-                  <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#1a1a1a] transition-colors duration-150 group">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#1a1a1a] shrink-0">
+                  <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-premium-hover border-b border-slate-100 dark:border-premium-border/20 transition-colors duration-150 group">
+                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-100 dark:bg-premium-bg shrink-0">
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[#52525b] text-xs">No img</div>
+                        <div className="w-full h-full flex items-center justify-center text-slate-400 dark:text-premium-muted text-xs">No img</div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className={`w-2.5 h-2.5 rounded-sm shrink-0 ${item.isVeg ? 'bg-[#22c55e]' : 'bg-[#ef4444]'}`} />
-                        <span className="text-white text-sm font-medium truncate">{item.name}</span>
+                        <span className="text-slate-900 dark:text-premium-text text-sm font-medium truncate">{item.name}</span>
                       </div>
                       {item.description && (
-                        <p className="text-[#52525b] text-xs truncate mt-0.5">{item.description}</p>
+                        <p className="text-slate-500 dark:text-premium-muted text-xs truncate mt-0.5">{item.description}</p>
                       )}
                     </div>
                     <span className="text-[#22c55e] text-sm font-medium shrink-0">{currency}{item.price}</span>
-                    {cat && <span className="text-[#52525b] text-xs bg-[#1a1a1a] px-2 py-0.5 rounded-full shrink-0 hidden sm:inline">{cat.name}</span>}
+                    {cat && <span className="text-slate-500 dark:text-premium-muted text-xs bg-slate-100 dark:bg-premium-bg px-2 py-0.5 rounded-full shrink-0 hidden sm:inline">{cat.name}</span>}
                     <Toggle checked={item.isAvailable} onChange={() => toggleAvailable(item)} />
-                    <button onClick={() => openEditItem(item)} className="p-1.5 rounded-md text-[#52525b] hover:text-[#22c55e] hover:bg-[#1a1a1a] transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100">
+                    <button onClick={() => openEditItem(item)} className="p-1.5 rounded-md text-slate-400 dark:text-premium-muted hover:text-premium-primary hover:bg-slate-100 dark:hover:bg-premium-bg transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100">
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleDeleteItem(item)} className="p-1.5 rounded-md text-[#52525b] hover:text-[#ef4444] hover:bg-[#1a1a1a] transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100">
+                    <button onClick={() => handleDeleteItem(item)} className="p-1.5 rounded-md text-slate-400 dark:text-premium-muted hover:text-[#ef4444] hover:bg-slate-100 dark:hover:bg-premium-bg transition-colors md:opacity-0 md:group-hover:opacity-100 opacity-100">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>

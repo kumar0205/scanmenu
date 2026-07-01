@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from './context/AuthContext';
 import { I18nProvider } from './context/I18nContext';
@@ -23,9 +23,17 @@ const Analytics = lazy(() => import('./pages/admin/Analytics'));
 const Subscription = lazy(() => import('./pages/admin/Subscription'));
 const Settings = lazy(() => import('./pages/admin/Settings'));
 const KitchenKDS = lazy(() => import('./pages/admin/KitchenKDS'));
+const RiderApp = lazy(() => import('./delivery/pages/RiderApp'));
+const Riders = lazy(() => import('./pages/admin/Riders'));
 
 const SuperLogin = lazy(() => import('./pages/super-admin/SuperLogin'));
 const SuperRestaurants = lazy(() => import('./pages/super-admin/Restaurants'));
+const SuperOverview = lazy(() => import('./pages/super-admin/Overview'));
+const SuperOwners = lazy(() => import('./pages/super-admin/Owners'));
+const SuperOrders = lazy(() => import('./pages/super-admin/Orders'));
+const SuperRiders = lazy(() => import('./pages/super-admin/Riders'));
+const SuperRevenue = lazy(() => import('./pages/super-admin/Revenue'));
+const SuperSettings = lazy(() => import('./pages/super-admin/PlatformSettings'));
 
 const MenuPage = lazy(() => import('./pages/customer/MenuPage'));
 const RatingPage = lazy(() => import('./pages/customer/RatingPage'));
@@ -40,14 +48,42 @@ const GlobalLoader = () => (
 
 const isNative = Capacitor.isNativePlatform();
 
+function RootRouteHandler() {
+  if (isNative) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  const host = window.location.hostname;
+  const isPlatformHost = 
+    host === 'localhost' || 
+    host === '127.0.0.1' || 
+    host === 'scanmenu.store' || 
+    host.endsWith('.scanmenu.store') || 
+    host.endsWith('vercel.app');
+
+  if (!isPlatformHost) {
+    return <MenuPage />;
+  }
+
+  return <Landing />;
+}
+
 export default function App() {
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    if (savedTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <I18nProvider>
           <Suspense fallback={<GlobalLoader />}>
             <Routes>
-              <Route path="/" element={isNative ? <Navigate to="/admin" replace /> : <Landing />} />
+              <Route path="/" element={<RootRouteHandler />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
 
@@ -59,6 +95,7 @@ export default function App() {
                   <Route path="dashboard" element={<Dashboard />} />
                   <Route path="menu" element={<Menu />} />
                   <Route path="tables" element={<Tables />} />
+                  <Route path="riders" element={<Riders />} />
                   <Route path="ratings" element={<Ratings />} />
                   <Route path="analytics" element={<Analytics />} />
                   <Route path="subscription" element={<Subscription />} />
@@ -75,18 +112,24 @@ export default function App() {
                 <Route element={<RoleGuard allowedRoles={['owner', 'superAdmin', 'chef', 'waiter']} />}>
                   <Route path="kitchen" element={<KitchenKDS />} />
                 </Route>
+
+                {/* Rider only */}
+                <Route element={<RoleGuard allowedRoles={['owner', 'superAdmin', 'rider']} />}>
+                  <Route path="rider/*" element={<RiderApp />} />
+                </Route>
               </Route>
 
               {/* SUPER ADMIN ROUTES */}
               <Route path="/super-admin/login" element={<SuperLogin />} />
               <Route path="/super-admin" element={<SuperAdminLayout />}>
-                <Route index element={<Navigate to="/super-admin/restaurants" replace />} />
+                <Route index element={<Navigate to="/super-admin/overview" replace />} />
+                <Route path="overview" element={<SuperOverview />} />
                 <Route path="restaurants" element={<SuperRestaurants />} />
-                <Route path="billing" element={<Navigate to="/super-admin/restaurants" replace />} />
-                <Route path="analytics" element={<Navigate to="/super-admin/restaurants" replace />} />
-                <Route path="users" element={<Navigate to="/super-admin/restaurants" replace />} />
-                <Route path="notifications" element={<Navigate to="/super-admin/restaurants" replace />} />
-                <Route path="settings" element={<Navigate to="/super-admin/restaurants" replace />} />
+                <Route path="owners" element={<SuperOwners />} />
+                <Route path="orders" element={<SuperOrders />} />
+                <Route path="riders" element={<SuperRiders />} />
+                <Route path="revenue" element={<SuperRevenue />} />
+                <Route path="settings" element={<SuperSettings />} />
               </Route>
 
               {isNative ? (
@@ -111,9 +154,9 @@ export default function App() {
           <Toaster
             position="top-right"
             toastOptions={{
-              style: { background: '#111111', color: '#ffffff', border: '1px solid #2a2a2a', borderRadius: '10px', fontSize: '14px' },
-              success: { iconTheme: { primary: '#22c55e', secondary: '#fff' } },
-              error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
+              style: { background: '#1E293B', color: '#F8FAFC', border: '1px solid #334155', borderRadius: '12px', fontSize: '14px' },
+              success: { iconTheme: { primary: '#22C55E', secondary: '#1E293B' } },
+              error: { iconTheme: { primary: '#EF4444', secondary: '#1E293B' } },
             }}
           />
         </I18nProvider>

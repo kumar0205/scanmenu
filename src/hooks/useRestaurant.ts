@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { subscribeToRestaurantBySlug } from '../firebase/db';
+import { subscribeToRestaurantBySlug, subscribeToRestaurantByCustomDomain } from '../firebase/db';
 import type { Restaurant } from '../types';
 
 export function useRestaurant(slug: string | undefined) {
@@ -8,23 +8,39 @@ export function useRestaurant(slug: string | undefined) {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    if (!slug) return;
-
     setLoading(true);
     setNotFound(false);
 
-    const unsubscribe = subscribeToRestaurantBySlug(slug, (r) => {
-      if (!r) {
-        setNotFound(true);
-        setRestaurant(null);
-      } else {
-        setNotFound(false);
-        setRestaurant(r);
-      }
-      setLoading(false);
-    });
+    let unsubscribe: () => void;
 
-    return () => unsubscribe();
+    if (slug) {
+      unsubscribe = subscribeToRestaurantBySlug(slug, (r) => {
+        if (!r) {
+          setNotFound(true);
+          setRestaurant(null);
+        } else {
+          setNotFound(false);
+          setRestaurant(r);
+        }
+        setLoading(false);
+      });
+    } else {
+      const hostname = window.location.hostname;
+      unsubscribe = subscribeToRestaurantByCustomDomain(hostname, (r) => {
+        if (!r) {
+          setNotFound(true);
+          setRestaurant(null);
+        } else {
+          setNotFound(false);
+          setRestaurant(r);
+        }
+        setLoading(false);
+      });
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [slug]);
 
   return { restaurant, loading, notFound };

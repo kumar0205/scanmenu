@@ -14,6 +14,7 @@ const translations = {
     'nav.analytics': 'Analytics',
     'nav.subscription': 'Subscription',
     'nav.settings': 'Settings',
+    'nav.riders': 'Delivery Riders',
     'nav.signOut': 'Sign Out',
     
     // Dashboard
@@ -84,6 +85,9 @@ const translations = {
     'orders.status.ready': 'Ready',
     'orders.status.completed': 'Completed',
     'orders.status.cancelled': 'Cancelled',
+    'orders.status.served': 'Served',
+    'orders.status.out_for_delivery': 'Out For Delivery',
+    'orders.status.delivered': 'Delivered',
     'orders.noOrders': 'No orders found for this status.',
     'orders.total': 'Total',
     'orders.updateStatus': 'Update Status',
@@ -160,6 +164,7 @@ const translations = {
     'nav.analytics': 'విశ్లేషణలు',
     'nav.subscription': 'చందా',
     'nav.settings': 'సెట్టింగ్‌లు',
+    'nav.riders': 'డెలివరీ రైడర్స్',
     'nav.signOut': 'సైన్ అవుట్',
     
     'dashboard.greeting': 'ఈరోజు ఏమి జరుగుతోందో ఇక్కడ ఉంది.',
@@ -225,6 +230,9 @@ const translations = {
     'orders.status.ready': 'సిద్ధంగా ఉంది',
     'orders.status.completed': 'పూర్తయింది',
     'orders.status.cancelled': 'రద్దు చేయబడింది',
+    'orders.status.served': 'వడ్డించబడింది',
+    'orders.status.out_for_delivery': 'డెలివరీకి బయలుదేరింది',
+    'orders.status.delivered': 'డెలివరీ చేయబడింది',
     'orders.noOrders': 'ఈ స్థితికి ఆర్డర్లు లేవు.',
     'orders.total': 'మొత్తం',
     'orders.updateStatus': 'స్థితిని నవీకరించండి',
@@ -296,6 +304,7 @@ const translations = {
     'nav.analytics': 'एनालिटिक्स',
     'nav.subscription': 'सदस्यता',
     'nav.settings': 'सेटिंग्स',
+    'nav.riders': 'डिलिवरी राइडर्स',
     'nav.signOut': 'साइन आउट',
     
     'dashboard.greeting': 'यहाँ देखें आज क्या हो रहा है।',
@@ -361,6 +370,9 @@ const translations = {
     'orders.status.ready': 'तैयार',
     'orders.status.completed': 'पूरा हुआ',
     'orders.status.cancelled': 'रद्द',
+    'orders.status.served': 'परोसा गया',
+    'orders.status.out_for_delivery': 'वितरण के लिए बाहर',
+    'orders.status.delivered': 'वितरित',
     'orders.noOrders': 'इस स्थिति के लिए कोई ऑर्डर नहीं मिला।',
     'orders.total': 'कुल',
     'orders.updateStatus': 'स्थिति अपडेट करें',

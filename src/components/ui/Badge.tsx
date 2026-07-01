@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { clsx } from 'clsx';
 import type { ReactNode } from 'react';
 
@@ -11,16 +10,16 @@ interface BadgeProps {
 }
 
 const variants: Record<BadgeVariant, string> = {
-  green: 'bg-[rgba(34,197,94,0.15)] text-[#22c55e] border border-[rgba(34,197,94,0.3)]',
-  amber: 'bg-[rgba(245,158,11,0.15)] text-[#f59e0b] border border-[rgba(245,158,11,0.3)]',
-  red: 'bg-[rgba(239,68,68,0.15)] text-[#ef4444] border border-[rgba(239,68,68,0.3)]',
-  blue: 'bg-[rgba(59,130,246,0.15)] text-[#3b82f6] border border-[rgba(59,130,246,0.3)]',
-  gray: 'bg-[rgba(82,82,91,0.3)] text-[#a1a1aa] border border-[#2a2a2a]',
+  green: 'bg-[#22C55E]/15 text-[#22C55E] border border-[#22C55E]/30',
+  amber: 'bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/30',
+  red: 'bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30',
+  blue: 'bg-[#3B82F6]/15 text-[#3B82F6] border border-[#3B82F6]/30',
+  gray: 'bg-slate-100 dark:bg-[#94A3B8]/15 text-slate-600 dark:text-[#94A3B8] border border-slate-200 dark:border-premium-border',
 };
 
 export function Badge({ variant = 'gray', children, className }: BadgeProps) {
   return (
-    <span className={clsx('inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', variants[variant], className)}>
+    <span className={clsx('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold select-none', variants[variant], className)}>
       {children}
     </span>
   );
@@ -30,13 +29,15 @@ export function statusBadge(status: string) {
   const map: Record<string, BadgeVariant> = {
     pending: 'amber',
     accepted: 'blue',
-    preparing: 'blue',
+    preparing: 'amber',
     ready: 'green',
-    completed: 'gray',
+    completed: 'green',
+    delivered: 'blue',
     cancelled: 'red',
     available: 'green',
     occupied: 'amber',
     inactive: 'gray',
+    paid: 'green',
   };
   return map[status] ?? 'gray';
 }

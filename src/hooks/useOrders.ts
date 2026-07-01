@@ -3,8 +3,10 @@ import { subscribeToOrders } from '../firebase/db';
 import { useAuthContext } from '../context/AuthContext';
 import type { Order } from '../types';
 import { requestNotificationPermission, showLocalNotification, playNotification } from '../utils/notifications';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
-export function useOrders(restaurantId: string | null) {
+export function useOrders(restaurantId: string | null, selectedDateStr?: string) {
   const { restaurant } = useAuthContext();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +26,32 @@ export function useOrders(restaurantId: string | null) {
 
   useEffect(() => {
     if (!restaurantId) return;
+
+    const now = new Date();
+    const istTime = new Date(now.getTime() + (330 * 60000));
+    const todayStr = istTime.toISOString().split('T')[0];
+    const targetDateStr = selectedDateStr || todayStr;
+
+    if (targetDateStr !== todayStr) {
+      setLoading(true);
+      let activeUnsub: (() => void) | null = null;
+      const snapRef = doc(db, 'restaurants', restaurantId, 'dailySnapshots', targetDateStr);
+      getDoc(snapRef).then((snapDoc) => {
+        if (snapDoc.exists()) {
+          const snapData = snapDoc.data();
+          setOrders(snapData.orders || []);
+          setLoading(false);
+        } else {
+          activeUnsub = fallbackFilterLiveOrders(targetDateStr);
+        }
+      }).catch(err => {
+        console.error("Failed to load snapshot orders:", err);
+        activeUnsub = fallbackFilterLiveOrders(targetDateStr);
+      });
+      return () => {
+        if (activeUnsub) activeUnsub();
+      };
+    }
 
     const unsub = subscribeToOrders(restaurantId, incoming => {
       if (!isFirstLoad.current) {
@@ -72,11 +100,19 @@ export function useOrders(restaurantId: string | null) {
       prevOrdersRef.current = newMap;
       isFirstLoad.current = false;
       
-      setOrders(incoming);
+      setOrders(incoming.filter(o => o.orderDate === todayStr));
       setLoading(false);
     });
     return unsub;
-  }, [restaurantId]);
+
+    function fallbackFilterLiveOrders(dateStr: string) {
+      return subscribeToOrders(restaurantId!, incoming => {
+        const filtered = incoming.filter(o => o.orderDate === dateStr);
+        setOrders(filtered);
+        setLoading(false);
+      });
+    }
+  }, [restaurantId, selectedDateStr]);
 
   return { orders, loading };
 }

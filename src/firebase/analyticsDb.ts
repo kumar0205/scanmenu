@@ -8,7 +8,8 @@ import {
   collection,
   query,
   where,
-  limit
+  limit,
+  arrayRemove
 } from 'firebase/firestore';
 import { db } from './config';
 import type { Order, DayAnalytics, MonthAnalytics } from '../types';
@@ -211,18 +212,46 @@ export async function updateOrderStatusAndAnalytics(
 ): Promise<void> {
   const orderRef = doc(db, 'restaurants', restaurantId, 'orders', orderId);
   
-  if (status !== 'completed') {
+  const timelineFieldMap: Record<string, string> = {
+    accepted: 'timeline.acceptedAt',
+    preparing: 'timeline.preparingAt',
+    ready: 'timeline.readyAt',
+    out_for_delivery: 'timeline.pickedUpAt',
+    delivered: 'timeline.deliveredAt',
+    served: 'timeline.deliveredAt'
+  };
+
+  if (status !== 'completed' && status !== 'served' && status !== 'delivered') {
     // Standard status update
     const batch = writeBatch(db);
-    batch.update(orderRef, {
+    const updatePayload: any = {
       status,
       updatedAt: Timestamp.now()
-    });
+    };
+    if (timelineFieldMap[status]) {
+      updatePayload[timelineFieldMap[status]] = Timestamp.now();
+    }
+    batch.update(orderRef, updatePayload);
+
+    if (status === 'cancelled') {
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data();
+        if (orderData.assignedRiderId) {
+          const riderRef = doc(db, 'deliveryBoys', orderData.assignedRiderId);
+          batch.update(riderRef, { 
+            currentOrderId: null,
+            activeOrderIds: arrayRemove(orderId)
+          });
+        }
+      }
+    }
+
     await batch.commit();
     return;
   }
 
-  // If status is 'completed', perform atomic update
+  // If status is terminal, perform atomic update
   const orderSnap = await getDoc(orderRef);
   if (!orderSnap.exists()) {
     throw new Error(`Order ${orderId} not found`);
@@ -230,7 +259,7 @@ export async function updateOrderStatusAndAnalytics(
   const order = { id: orderSnap.id, ...orderSnap.data() } as Order;
 
   // Analytics race condition guard: If order is already completed, do not re-run rollups
-  if (order.status === 'completed') {
+  if (order.status === 'completed' || order.status === 'served' || order.status === 'delivered') {
     return;
   }
 
@@ -260,10 +289,14 @@ export async function updateOrderStatusAndAnalytics(
   const batch = writeBatch(db);
 
   // 1. Update order status
-  batch.update(orderRef, {
-    status: 'completed',
+  const updatePayloadTerminal: any = {
+    status,
     updatedAt: Timestamp.now()
-  });
+  };
+  if (timelineFieldMap[status]) {
+    updatePayloadTerminal[timelineFieldMap[status]] = Timestamp.now();
+  }
+  batch.update(orderRef, updatePayloadTerminal);
 
   // Track customer profile for repeat customer analytics
   let isRepeatCustomer = false;

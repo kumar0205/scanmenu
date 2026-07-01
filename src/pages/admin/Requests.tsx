@@ -75,16 +75,16 @@ export default function Requests() {
   void now; // consumed by formatTimeAgo via Date.now() on each render
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen text-white">
+    <div className="bg-[#F8FAFC] dark:bg-premium-bg min-h-screen text-slate-900 dark:text-premium-text transition-colors duration-200">
       <AdminHeader title="Requests">
         <Link
           to="/admin/orders"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1a1a1a] text-[#a1a1aa] hover:text-white border border-[#2a2a2a] transition-all duration-150"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-premium-bg text-slate-650 dark:text-premium-text hover:text-premium-primary border border-slate-200 dark:border-premium-border transition-all duration-150"
         >
-          <ClipboardList className="w-3.5 h-3.5 text-[#22c55e]" />
+          <ClipboardList className="w-3.5 h-3.5 text-premium-primary" />
           <span>Orders</span>
           {pendingOrdersCount > 0 && (
-            <span className="w-4 h-4 bg-[#22c55e] text-black text-[9px] rounded-full flex items-center justify-center font-bold animate-pulse">
+            <span className="w-4 h-4 bg-premium-primary text-black text-[9px] rounded-full flex items-center justify-center font-bold animate-pulse">
               {pendingOrdersCount}
             </span>
           )}
@@ -93,14 +93,14 @@ export default function Requests() {
       
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
         {/* Toggle Filters */}
-        <div className="flex gap-2 border-b border-[#2a2a2a] pb-4 items-center justify-between flex-wrap">
+        <div className="flex gap-2 border-b border-slate-200 dark:border-premium-border/40 pb-4 items-center justify-between flex-wrap">
           <div className="flex gap-2">
             <button
               onClick={() => setFilter('pending')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 filter === 'pending'
-                  ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e] border border-[#22c55e]'
-                  : 'text-[#a1a1aa] hover:bg-[#111111]'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-900/30'
+                  : 'text-slate-500 dark:text-premium-muted hover:bg-slate-100 dark:hover:bg-premium-hover'
               }`}
             >
               Active Requests{filter === 'pending' ? ` (${requests.length})` : ''}
@@ -109,8 +109,8 @@ export default function Requests() {
               onClick={() => setFilter('completed')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 filter === 'completed'
-                  ? 'bg-[rgba(34,197,94,0.15)] text-[#22c55e] border border-[#22c55e]'
-                  : 'text-[#a1a1aa] hover:bg-[#111111]'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-900/30'
+                  : 'text-slate-500 dark:text-premium-muted hover:bg-slate-100 dark:hover:bg-premium-hover'
               }`}
             >
               Completed{filter === 'completed' ? ` (${requests.length})` : ''}
@@ -119,7 +119,7 @@ export default function Requests() {
 
           <button
             onClick={() => setSortOrder(prev => prev === 'latest' ? 'oldest' : 'latest')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1a1a1a] text-[#a1a1aa] hover:text-white border border-[#2a2a2a] transition-all duration-150"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 dark:bg-premium-bg text-slate-650 dark:text-premium-text hover:text-premium-primary border border-slate-200 dark:border-premium-border transition-all duration-150"
           >
             <ArrowUpDown className="w-3.5 h-3.5" />
             {sortOrder === 'latest' ? 'Latest First' : 'Oldest First'}
@@ -128,22 +128,22 @@ export default function Requests() {
 
         {loading ? (
           <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#22c55e]" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-premium-primary" />
           </div>
         ) : requests.length === 0 ? (
-          <div className="text-center py-16 bg-[#111111] border border-[#2a2a2a] rounded-2xl">
-            <GlassWater className="w-12 h-12 text-[#52525b] mx-auto mb-3" />
-            <p className="text-[#a1a1aa] text-sm">No {filter} requests found.</p>
+          <div className="text-center py-16 bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-2xl shadow-sm dark:shadow-premium">
+            <GlassWater className="w-12 h-12 text-slate-400 dark:text-premium-muted mx-auto mb-3" />
+            <p className="text-slate-500 dark:text-premium-muted text-sm">No {filter} requests found.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedRequests.map(req => (
               <div 
                 key={req.id} 
-                className={`bg-[#111111] border rounded-2xl p-5 flex flex-col justify-between hover:border-brand-500/20 transition-all duration-300 shadow-md relative overflow-hidden group ${
+                className={`bg-white dark:bg-premium-card border rounded-2xl p-5 flex flex-col justify-between hover:border-premium-primary/40 transition-all duration-300 shadow-md relative overflow-hidden group ${
                   req.type === 'payment'
-                    ? 'border-[#22c55e]/30 bg-gradient-to-br from-[#111111] to-[#0f1f14]'
-                    : 'border-[#2a2a2a]'
+                    ? 'border-emerald-250 dark:border-emerald-950/20 bg-emerald-50/5 dark:bg-emerald-950/5'
+                    : 'border-slate-200 dark:border-premium-border'
                 }`}
               >
                 {filter === 'pending' && req.type !== 'payment' && (
@@ -162,31 +162,31 @@ export default function Requests() {
                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
                       req.type === 'payment'
                         ? 'bg-[#22c55e]/10 border border-[#22c55e]/20 text-[#22c55e]'
-                        : 'bg-brand-900/10 border border-brand-500/10 text-brand-400'
+                        : 'bg-slate-100 dark:bg-premium-bg border border-slate-200 dark:border-premium-border text-slate-600 dark:text-premium-muted'
                     }`}>
                       <span className="text-lg font-bold">
                         {req.type === 'payment' ? '💳' : req.type === 'waiter' ? '🛎️' : (req.tableNumber === 'Takeaway' ? '🥡' : `T${req.tableNumber}`)}
                       </span>
                     </div>
                     <div>
-                      <h4 className="font-bold text-white text-base">
+                      <h4 className="font-bold text-slate-950 dark:text-premium-text text-base">
                         {req.tableNumber === 'Takeaway' ? 'Takeaway' : `Table ${req.tableNumber}`}
                       </h4>
-                      <p className="text-[#52525b] text-xs flex items-center gap-1 mt-0.5">
+                      <p className="text-slate-450 dark:text-premium-muted text-xs flex items-center gap-1 mt-0.5">
                         <Clock className="w-3.5 h-3.5" /> {getReqTime(req.createdAt)}
                       </p>
                     </div>
                   </div>
 
-                  <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-3.5 flex items-center justify-between">
+                  <div className="bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border rounded-xl p-3.5 flex items-center justify-between">
                     {req.type === 'payment' ? (
                       <>
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-[#a1a1aa] text-xs flex items-center gap-1.5">
-                            Payment {req.dailyOrderId && <span className="text-white font-semibold">Order #{req.dailyOrderId}</span>}
+                          <span className="text-slate-500 dark:text-premium-muted text-xs flex items-center gap-1.5">
+                            Payment {req.dailyOrderId && <span className="text-slate-900 dark:text-premium-text font-semibold">Order #{req.dailyOrderId}</span>}
                           </span>
                           {req.customerName && (
-                            <span className="text-[#a1a1aa] text-[11px]">{req.customerName}</span>
+                            <span className="text-slate-450 dark:text-premium-muted text-[11px]">{req.customerName}</span>
                           )}
                         </div>
                         <span className="text-[#22c55e] text-base font-bold flex items-center gap-1.5">
@@ -195,15 +195,15 @@ export default function Requests() {
                       </>
                     ) : req.type === 'waiter' ? (
                       <>
-                        <span className="text-[#a1a1aa] text-xs">Service Call</span>
-                        <span className="text-white text-base font-bold flex items-center gap-1.5 animate-pulse">
+                        <span className="text-slate-550 dark:text-premium-muted text-xs">Service Call</span>
+                        <span className="text-slate-950 dark:text-premium-text text-base font-bold flex items-center gap-1.5 animate-pulse">
                           🛎️ Call Waiter
                         </span>
                       </>
                     ) : (
                       <>
-                        <span className="text-[#a1a1aa] text-xs">Mineral Water {req.ml ? `(${req.ml}ml)` : ''}</span>
-                        <span className="text-white text-base font-bold flex items-center gap-1.5">
+                        <span className="text-slate-550 dark:text-premium-muted text-xs">Mineral Water {req.ml ? `(${req.ml}ml)` : ''}</span>
+                        <span className="text-slate-950 dark:text-premium-text text-base font-bold flex items-center gap-1.5">
                           💧 {req.qty} {req.qty > 1 ? 'Bottles' : 'Bottle'}
                         </span>
                       </>
@@ -218,7 +218,7 @@ export default function Requests() {
                         <Button
                           fullWidth
                           onClick={() => handleComplete(req.id, req.type, req.orderId)}
-                          className="!bg-[#22c55e] hover:!bg-[#16a34a] flex items-center justify-center gap-2"
+                          className="!bg-[#22c55e] hover:!bg-[#16a34a] flex items-center justify-center gap-2 text-white font-bold"
                         >
                           <Check className="w-4 h-4" /> Verify
                         </Button>

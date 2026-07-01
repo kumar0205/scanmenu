@@ -42,7 +42,13 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
   const [customerName, setCustomerName] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [autoAccept, setAutoAccept] = useState<boolean>(true);
-  const [isParcel, setIsParcel] = useState<boolean>(false);
+  const [orderType, setOrderType] = useState<'dinein' | 'parcel' | 'delivery'>('dinein');
+  const [deliveryName, setDeliveryName] = useState<string>('');
+  const [deliveryPhone, setDeliveryPhone] = useState<string>('');
+  const [deliveryAddress, setDeliveryAddress] = useState<string>('');
+  const [deliveryStreet, setDeliveryStreet] = useState<string>('');
+  const [deliveryLandmark, setDeliveryLandmark] = useState<string>('');
+  const [deliveryTown, setDeliveryTown] = useState<string>('');
   const [placing, setPlacing] = useState<boolean>(false);
 
   // Menu Search/Filter States
@@ -76,7 +82,13 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
       setCustomTableNumber('');
       setSelectedTableType('dropdown');
       setAutoAccept(true);
-      setIsParcel(false);
+      setOrderType('dinein');
+      setDeliveryName('');
+      setDeliveryPhone('');
+      setDeliveryAddress('');
+      setDeliveryStreet('');
+      setDeliveryLandmark('');
+      setDeliveryTown('');
       setMobileTab('menu');
       if (tables.length > 0) {
         setSelectedTableNumber(tables[0].number);
@@ -105,18 +117,24 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
     const sgstRate = restaurant?.tax?.sgstEnabled ? (restaurant.tax.sgstPercent / 100) : 0;
     const cgstAmount = Math.round(cartTotal * cgstRate * 100) / 100;
     const sgstAmount = Math.round(cartTotal * sgstRate * 100) / 100;
-    const totalAmount = Math.round(cartTotal * (1 + cgstRate + sgstRate) * 100) / 100;
+
+    const deliveryFeeVal = orderType === 'delivery'
+      ? (restaurant?.settings?.delivery?.places?.find((p: any) => p.place.toLowerCase() === deliveryTown.toLowerCase())?.fee ?? restaurant?.settings?.fees?.deliveryFee ?? 40)
+      : 0;
+
+    const totalAmount = Math.round((cartTotal + deliveryFeeVal) * (1 + cgstRate + sgstRate) * 100) / 100;
 
     return {
       cgstAmount,
       sgstAmount,
       totalAmount,
+      deliveryFee: deliveryFeeVal,
       cgstPercent: restaurant?.tax?.cgstPercent ?? 0,
       sgstPercent: restaurant?.tax?.sgstPercent ?? 0,
       cgstEnabled: restaurant?.tax?.cgstEnabled ?? false,
       sgstEnabled: restaurant?.tax?.sgstEnabled ?? false,
     };
-  }, [cartTotal, restaurant]);
+  }, [cartTotal, restaurant, orderType, deliveryTown]);
 
   // Cart Mutations
   const updateQty = (item: MenuItem, change: number, comboPax?: number) => {
@@ -174,7 +192,9 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
 
     // Determine Table Number
     let tableNo = '';
-    if (isParcel || selectedTableType === 'takeaway') {
+    if (orderType === 'delivery') {
+      tableNo = 'Delivery';
+    } else if (orderType === 'parcel' || selectedTableType === 'takeaway') {
       tableNo = 'Takeaway';
     } else if (selectedTableType === 'custom') {
       tableNo = customTableNumber.trim();
@@ -190,7 +210,45 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
       }
     }
 
-    const finalCustomerName = customerName.trim() || `Table ${tableNo} Walk-in`;
+    let finalAddressObj: any = null;
+    if (orderType === 'delivery') {
+      if (!deliveryName.trim()) {
+        toast.error('Please enter delivery recipient name.');
+        return;
+      }
+      if (!deliveryPhone.trim()) {
+        toast.error('Please enter delivery contact phone.');
+        return;
+      }
+      if (!deliveryAddress.trim()) {
+        toast.error('Please enter Door No / House No.');
+        return;
+      }
+      if (!deliveryStreet.trim()) {
+        toast.error('Please enter Street Name.');
+        return;
+      }
+      if (!deliveryTown.trim()) {
+        toast.error('Please select or enter Village / Town.');
+        return;
+      }
+
+      finalAddressObj = {
+        id: 'manual_' + Date.now().toString(36),
+        title: 'Delivery',
+        name: deliveryName.trim(),
+        phone: deliveryPhone.trim(),
+        address: deliveryAddress.trim(),
+        street: deliveryStreet.trim(),
+        landmark: deliveryLandmark.trim() || undefined,
+        town: deliveryTown.trim(),
+        pincode: ''
+      };
+    }
+
+    const finalCustomerName = orderType === 'delivery'
+      ? deliveryName.trim()
+      : (customerName.trim() || `Table ${tableNo} Walk-in`);
     setPlacing(true);
 
     try {
@@ -247,7 +305,10 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
         sessionId,
         dailyOrderId,
         orderDate,
-        isParcel,
+        isParcel: orderType === 'parcel',
+        orderType: orderType === 'delivery' ? 'delivery' : 'dinein',
+        ...(finalAddressObj ? { address: finalAddressObj } : {}),
+        ...(orderType === 'delivery' ? { deliveryFee: taxDetails.deliveryFee } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -267,6 +328,10 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
         customerId: user?.uid || restaurant.ownerId,
         status: 'pending_payment',
         orderId,
+        isParcel: orderType === 'parcel',
+        orderType: orderType === 'delivery' ? 'delivery' : 'dinein',
+        ...(finalAddressObj ? { address: finalAddressObj } : {}),
+        ...(orderType === 'delivery' ? { deliveryFee: taxDetails.deliveryFee } : {}),
         expiresAt: new Timestamp(
           Math.floor((Date.now() + 60 * 60 * 1000) / 1000),
           0
@@ -517,17 +582,17 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
             <div className="p-4 border-b border-[#2a2a2a] space-y-3.5">
               <div>
                 <label className="text-xs font-semibold text-[#a1a1aa] block mb-1.5 uppercase tracking-wider">Order Type</label>
-                <div className="grid grid-cols-2 gap-1 bg-[#1a1a1a] p-1 rounded-lg border border-[#2a2a2a]">
+                <div className="grid grid-cols-3 gap-1 bg-[#1a1a1a] p-1 rounded-lg border border-[#2a2a2a]">
                   <button
                     type="button"
                     onClick={() => {
-                      setIsParcel(false);
+                      setOrderType('dinein');
                       if (selectedTableType === 'takeaway') {
                         setSelectedTableType('dropdown');
                       }
                     }}
                     className={`py-1.5 px-2 text-xs font-bold rounded transition-colors text-center ${
-                      !isParcel ? 'bg-[#22c55e] text-black font-bold' : 'text-[#a1a1aa] hover:text-white'
+                      orderType === 'dinein' ? 'bg-[#22c55e] text-black font-bold' : 'text-[#a1a1aa] hover:text-white'
                     }`}
                   >
                     Dine-In
@@ -535,19 +600,31 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      setIsParcel(true);
+                      setOrderType('parcel');
                       setSelectedTableType('takeaway');
                     }}
                     className={`py-1.5 px-2 text-xs font-bold rounded transition-colors text-center ${
-                      isParcel ? 'bg-[#22c55e] text-black font-bold' : 'text-[#a1a1aa] hover:text-white'
+                      orderType === 'parcel' ? 'bg-[#22c55e] text-black font-bold' : 'text-[#a1a1aa] hover:text-white'
                     }`}
                   >
                     Parcel
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderType('delivery');
+                      setSelectedTableType('takeaway');
+                    }}
+                    className={`py-1.5 px-2 text-xs font-bold rounded transition-colors text-center ${
+                      orderType === 'delivery' ? 'bg-[#22c55e] text-black font-bold' : 'text-[#a1a1aa] hover:text-white'
+                    }`}
+                  >
+                    Delivery
+                  </button>
                 </div>
               </div>
 
-              {!isParcel && (
+              {orderType === 'dinein' && (
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-[#a1a1aa] block mb-1.5 uppercase tracking-wider">Select Table No</label>
                   <select
@@ -564,6 +641,85 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
                       <option value="" disabled className="bg-[#111111] text-white">No Tables Configured</option>
                     )}
                   </select>
+                </div>
+              )}
+
+              {orderType === 'delivery' && (
+                <div className="space-y-3.5 border-t border-[#2a2a2a] pt-3.5">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">Delivery Address Details</h4>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      type="text"
+                      label="Recipient Name"
+                      placeholder="Receiver's name"
+                      value={deliveryName}
+                      onChange={e => setDeliveryName(e.target.value)}
+                      className="py-1.5 text-white"
+                    />
+                    <Input
+                      type="tel"
+                      label="Phone Number"
+                      placeholder="10-digit number"
+                      value={deliveryPhone}
+                      onChange={e => setDeliveryPhone(e.target.value.replace(/\D/g, ''))}
+                      className="py-1.5 text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      type="text"
+                      label="Door No / House No"
+                      placeholder="e.g. 4/12, Flat 101"
+                      value={deliveryAddress}
+                      onChange={e => setDeliveryAddress(e.target.value)}
+                      className="py-1.5 text-white"
+                    />
+                    <Input
+                      type="text"
+                      label="Street Name"
+                      placeholder="e.g. Temple Street"
+                      value={deliveryStreet}
+                      onChange={e => setDeliveryStreet(e.target.value)}
+                      className="py-1.5 text-white"
+                    />
+                  </div>
+
+                  <Input
+                    type="text"
+                    label="Landmark (Optional)"
+                    placeholder="e.g. near Bus Stand"
+                    value={deliveryLandmark}
+                    onChange={e => setDeliveryLandmark(e.target.value)}
+                    className="py-1.5 text-white"
+                  />
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#a1a1aa] block mb-1.5 uppercase tracking-wider">Village / Town</label>
+                    {restaurant?.settings?.delivery?.places && restaurant.settings.delivery.places.length > 0 ? (
+                      <select
+                        value={deliveryTown}
+                        onChange={e => setDeliveryTown(e.target.value)}
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-[#22c55e]"
+                      >
+                        <option value="" className="bg-[#111111] text-white">Select Village/Town</option>
+                        {restaurant.settings.delivery.places.map((p: any, idx: number) => (
+                          <option key={idx} value={p.place} className="bg-[#111111] text-white">
+                            {p.place} (+{restaurant?.currency || '₹'}{p.fee})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        type="text"
+                        placeholder="e.g. Town Name"
+                        value={deliveryTown}
+                        onChange={e => setDeliveryTown(e.target.value)}
+                        className="py-1.5 text-white"
+                      />
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -663,6 +819,12 @@ export function PlaceOrderModal({ open, onClose }: PlaceOrderModalProps) {
                 <span>Subtotal</span>
                 <span className="text-white font-medium">{restaurant?.currency ?? '₹'}{cartTotal}</span>
               </div>
+              {orderType === 'delivery' && (
+                <div className="flex justify-between text-[11px] text-[#71717a]">
+                  <span>Delivery Fee</span>
+                  <span>{restaurant?.currency ?? '₹'}{taxDetails.deliveryFee}</span>
+                </div>
+              )}
               {taxDetails.cgstEnabled && (
                 <div className="flex justify-between text-[11px] text-[#71717a]">
                   <span>CGST ({taxDetails.cgstPercent}%)</span>

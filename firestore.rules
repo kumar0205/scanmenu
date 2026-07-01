@@ -38,6 +38,12 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'waiter' &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.restaurantId == restaurantId;
     }
+
+    function isRider() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider';
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     match /users/{userId} {
@@ -48,6 +54,7 @@ service cloud.firestore {
          isRestaurantOwner(get(/databases/$(database)/documents/users/$(userId)).data.restaurantId))
       );
       allow create: if request.auth != null && (
+        isSuperAdmin() ||
         (request.auth.uid == userId && (
           request.resource.data.role == 'owner' ||
           (request.resource.data.role == 'superAdmin' && request.auth.token.email == 'cjvkumarraja@gmail.com')
@@ -57,6 +64,7 @@ service cloud.firestore {
           (request.resource.data.role == 'chef' || request.resource.data.role == 'waiter'))
       );
       allow update: if request.auth != null && (
+        isSuperAdmin() ||
         (request.auth.uid == userId && (
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])) ||
           (request.resource.data.role == resource.data.role)
@@ -109,15 +117,15 @@ service cloud.firestore {
     
     match /restaurants/{restaurantId} {
       allow get: if true;
-      allow list: if (request.query.limit != null && request.query.limit <= 1) || isSuperAdmin();
+      allow list: if (request.query.limit != null && request.query.limit <= 1) || isSuperAdmin() || isRider();
       allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       
       // Admin only collections
       match /items/{itemId} { allow read: if true; allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); }
       match /categories/{categoryId} { allow read: if true; allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); }
+      match /coupons/{couponId} { allow read: if true; allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin()); }
       match /tables/{tableId} {
-        allow get: if true;
-        allow list: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
+        allow read: if true;
         allow write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       }
 
@@ -164,22 +172,28 @@ service cloud.firestore {
           isSuperAdmin() ||
           isChef(restaurantId) ||
           isWaiter(restaurantId) ||
-          resource.data.customerId == request.auth.uid
+          resource.data.customerId == request.auth.uid ||
+          (isRider() && resource.data.orderType == 'delivery' && (resource.data.status == 'ready' || resource.data.assignedRiderId == request.auth.uid))
         );
+        allow get: if true; // Allow guests to track their own orders by ID
 
-        // Orders can be created directly by authenticated customers under their own customerId.
+        // Orders can be created directly by anyone (including guest checkout).
         // Enforce initial status to prevent customer from bypassing payment or setting statuses maliciously.
-        allow create: if request.auth != null && (
-          isRestaurantOwner(restaurantId) ||
-          isSuperAdmin() ||
+        allow create: if isRestaurantOwner(restaurantId) || isSuperAdmin() || (
+          request.resource.data.status == 'pending' &&
+          request.resource.data.paymentStatus == 'unpaid' &&
+          request.resource.data.items is list &&
+          request.resource.data.items.size() > 0 &&
+          request.resource.data.totalAmount is number &&
+          request.resource.data.totalAmount >= 0 &&
+          request.resource.data.orderType in ['dinein', 'delivery'] &&
+          request.resource.data.orderSource in ['qr', 'domain'] &&
           (
-            request.resource.data.customerId == request.auth.uid &&
-            request.resource.data.status == 'pending' &&
-            request.resource.data.paymentStatus == 'unpaid' &&
-            request.resource.data.items is list &&
-            request.resource.data.items.size() > 0 &&
-            request.resource.data.totalAmount is number &&
-            request.resource.data.totalAmount >= 0
+            request.resource.data.orderType != 'dinein' || 
+            !('settings' in get(/databases/$(database)/documents/restaurants/$(restaurantId)).data) ||
+            !('ordering' in get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.settings) ||
+            !('qr' in get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.settings.ordering) ||
+            get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.settings.ordering.qr == true
           )
         );
 
@@ -194,25 +208,51 @@ service cloud.firestore {
           request.resource.data.items is list &&
           request.resource.data.items.size() == resource.data.items.size();
 
-        // Waiter: can accept (pending→accepted), cancel active orders, and confirm payment
+        // Waiter: can accept, transition status, confirm payment
         allow update: if isWaiter(restaurantId) &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['status', 'paymentStatus', 'updatedAt']) &&
+            .hasAny(['status', 'paymentStatus', 'updatedAt', 'timeline']) &&
           (
             // Accept order (pending -> accepted)
             (resource.data.status == 'pending' && request.resource.data.status == 'accepted') ||
             // Start cooking (accepted -> preparing)
             (resource.data.status == 'accepted' && request.resource.data.status == 'preparing') ||
-            // Cancel any active (non-terminal) order
-            ((resource.data.status == 'pending' || resource.data.status == 'accepted' || resource.data.status == 'preparing' || resource.data.status == 'ready') &&
-             request.resource.data.status == 'cancelled') ||
-            // Confirm payment (verifying -> paid)
-            (resource.data.paymentStatus == 'verifying' &&
-             request.resource.data.paymentStatus == 'paid' &&
-             request.resource.data.status == resource.data.status)
+            // Transition preparing -> ready
+            (resource.data.status == 'preparing' && request.resource.data.status == 'ready') ||
+            // Complete or Serve order
+            (resource.data.status == 'ready' && (request.resource.data.status == 'served' || request.resource.data.status == 'completed')) ||
+            // Handover Delivery order (ready -> out_for_delivery)
+            (resource.data.status == 'ready' && request.resource.data.status == 'out_for_delivery') ||
+            // Complete Delivery order (out_for_delivery -> delivered)
+            (resource.data.status == 'out_for_delivery' && request.resource.data.status == 'delivered') ||
+            // Cancel active order
+            (resource.data.status in ['pending', 'accepted', 'preparing', 'ready', 'out_for_delivery'] && request.resource.data.status == 'cancelled') ||
+            // Confirm payment
+            (request.resource.data.paymentStatus == 'paid' && request.resource.data.status == resource.data.status)
           );
 
-        // Customer updates: rating, payment verification, extra items
+        // Rider: can assign self (when status is ready) and mark delivered
+        allow update: if isRider() && (
+          // Accept & Pickup order
+          (
+            resource.data.orderType == 'delivery' &&
+            resource.data.status == 'ready' &&
+            (resource.data.assignedRiderId == null || !resource.data.keys().hasAny(['assignedRiderId'])) &&
+            request.resource.data.assignedRiderId == request.auth.uid &&
+            request.resource.data.status == 'out_for_delivery' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assignedRiderId', 'assignedRiderName', 'riderAssignedAt', 'updatedAt', 'timeline', 'rider'])
+          ) ||
+          // Mark as delivered
+          (
+            resource.data.orderType == 'delivery' &&
+            resource.data.assignedRiderId == request.auth.uid &&
+            resource.data.status == 'out_for_delivery' &&
+            request.resource.data.status == 'delivered' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'timeline', 'paymentStatus', 'paymentMethod', 'paymentReceivedBy', 'rider'])
+          )
+        );
+
+        // Customer updates: rating, payment verification
         allow update: if request.auth != null &&
           resource.data.customerId == request.auth.uid &&
           (
@@ -224,13 +264,6 @@ service cloud.firestore {
               resource.data.paymentStatus == 'unpaid' &&
               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentStatus']) &&
               request.resource.data.paymentStatus == 'verifying'
-            )
-            ||
-            (
-              resource.data.paymentStatus == 'unpaid' &&
-              (resource.data.status == 'pending' || resource.data.status == 'accepted' || resource.data.status == 'preparing' || resource.data.status == 'ready') &&
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'totalAmount', 'updatedAt']) &&
-              request.resource.data.totalAmount >= resource.data.totalAmount
             )
           );
       }
@@ -266,6 +299,44 @@ service cloud.firestore {
       match /customers/{customerId} {
         allow read, write: if request.auth != null && (isRestaurantOwner(restaurantId) || isSuperAdmin());
       }
+    }
+
+    match /{path=**}/orders/{orderId} {
+      allow read: if request.auth != null && (
+        isSuperAdmin() ||
+        resource.data.customerId == request.auth.uid ||
+        (isRider() && resource.data.orderType == 'delivery' && (resource.data.status == 'ready' || resource.data.assignedRiderId == request.auth.uid))
+      );
+    }
+
+    match /customers/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      
+      match /addresses/{addressId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    match /deliveryBoys/{riderId} {
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.uid == riderId || 
+        isSuperAdmin() || 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner'
+      );
+    }
+
+    match /settlements/{settlementId} {
+      allow read: if request.auth != null && (
+        isSuperAdmin() ||
+        resource.data.riderId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner'
+      );
+      allow create: if request.auth != null && (
+        isSuperAdmin() ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner'
+      );
+      allow update, delete: if isSuperAdmin();
     }
   }
 }

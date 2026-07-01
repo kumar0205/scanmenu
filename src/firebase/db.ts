@@ -59,6 +59,24 @@ export function subscribeToRestaurantBySlug(
   });
 }
 
+export function subscribeToRestaurantByCustomDomain(
+  domain: string,
+  callback: (restaurant: Restaurant | null) => void
+): () => void {
+  const q = query(collection(db, 'restaurants'), where('settings.customDomain', '==', domain), limit(1));
+  return onSnapshot(q, (snap) => {
+    if (snap.empty) {
+      callback(null);
+    } else {
+      const d = snap.docs[0];
+      callback(toRestaurant(d.id, d.data()));
+    }
+  }, (error) => {
+    console.error('subscribeToRestaurantByCustomDomain error:', error);
+    callback(null);
+  });
+}
+
 export async function getRestaurantByOwnerId(uid: string): Promise<Restaurant | null> {
   const q = query(collection(db, 'restaurants'), where('ownerId', '==', uid), limit(1));
   const snap = await getDocs(q);
@@ -308,11 +326,21 @@ export async function completeWaterRequest(restaurantId: string, requestId: stri
   });
 }
 
-export async function verifyOrderPayment(restaurantId: string, orderId: string, sessionId?: string, requestId?: string): Promise<void> {
+export async function verifyOrderPayment(
+  restaurantId: string, 
+  orderId: string, 
+  sessionId?: string, 
+  requestId?: string,
+  paymentMethod?: 'cash' | 'upi'
+): Promise<void> {
   const batch = writeBatch(db);
   
   const orderRef = doc(db, 'restaurants', restaurantId, 'orders', orderId);
-  batch.update(orderRef, { paymentStatus: 'paid' });
+  const updates: any = { paymentStatus: 'paid' };
+  if (paymentMethod) {
+    updates.paymentMethod = paymentMethod;
+  }
+  batch.update(orderRef, updates);
 
   let actualSessionId = sessionId;
   if (!actualSessionId) {
@@ -325,7 +353,11 @@ export async function verifyOrderPayment(restaurantId: string, orderId: string, 
   if (actualSessionId) {
     const sessionSnap = await getDoc(doc(db, 'sessions', actualSessionId));
     if (sessionSnap.exists()) {
-      batch.update(sessionSnap.ref, { status: 'paid' });
+      const sessionUpdates: any = { status: 'paid' };
+      if (paymentMethod) {
+        sessionUpdates.paymentMethod = paymentMethod;
+      }
+      batch.update(sessionSnap.ref, sessionUpdates);
     }
   }
 

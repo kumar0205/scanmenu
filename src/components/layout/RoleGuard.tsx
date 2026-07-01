@@ -6,6 +6,7 @@ const ROLE_HOME: Record<string, string> = {
   waiter:     '/admin/orders',
   owner:      '/admin/dashboard',
   superAdmin: '/admin/dashboard',
+  rider:      '/admin/rider',
 };
 
 interface RoleGuardProps {

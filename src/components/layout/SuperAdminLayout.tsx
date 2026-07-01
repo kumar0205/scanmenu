@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
-  Store, Bell, LogOut, Search, UserCircle, Menu as MenuIcon, X
+  Store, Bell, LogOut, Search, UserCircle, Menu as MenuIcon, X,
+  LayoutDashboard, Users, Receipt, Bike, TrendingUp, Settings
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { signOut } from '../../firebase/auth';
@@ -32,7 +33,13 @@ export function SuperAdminLayout() {
   };
 
   const navItems = [
-    { to: '/super-admin/restaurants', icon: Store, label: 'All Restaurants' },
+    { to: '/super-admin/overview', icon: LayoutDashboard, label: 'Overview' },
+    { to: '/super-admin/restaurants', icon: Store, label: 'Restaurants' },
+    { to: '/super-admin/owners', icon: Users, label: 'Owners' },
+    { to: '/super-admin/orders', icon: Receipt, label: 'Orders' },
+    { to: '/super-admin/riders', icon: Bike, label: 'Riders' },
+    { to: '/super-admin/revenue', icon: TrendingUp, label: 'Revenue' },
+    { to: '/super-admin/settings', icon: Settings, label: 'Platform Settings' },
   ];
 
   if (loading) {

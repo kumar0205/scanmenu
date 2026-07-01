@@ -14,6 +14,8 @@ interface AuthContextType {
   loading: boolean;
   setRestaurant: (r: Restaurant | null) => void;
   isDemo: boolean;
+  globalSelectedDate: string;
+  setGlobalSelectedDate: (d: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,9 +26,16 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   setRestaurant: () => {},
   isDemo: false,
+  globalSelectedDate: '',
+  setGlobalSelectedDate: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [globalSelectedDate, setGlobalSelectedDate] = useState(() => {
+    const now = new Date();
+    const istTime = new Date(now.getTime() + (330 * 60000));
+    return istTime.toISOString().split('T')[0];
+  });
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<string | null>(() => localStorage.getItem('scanmenu_user_role'));
   const [restaurant, setRestaurant] = useState<Restaurant | null>(() => {
@@ -106,13 +115,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 r = { id: rDoc.id, ...rDoc.data() } as Restaurant;
               }
             }
+          } else if (role === 'rider') {
+            // Riders are platform-wide; ensure restaurant is null
+            r = null;
           } else {
             r = await getRestaurantByOwnerId(u.uid);
           }
 
-          if (r && isMounted) {
+          if (isMounted) {
             setRestaurant(r);
-            localStorage.setItem('scanmenu_user_restaurant', JSON.stringify(r));
+            if (r) {
+              localStorage.setItem('scanmenu_user_restaurant', JSON.stringify(r));
+            } else {
+              localStorage.removeItem('scanmenu_user_restaurant');
+            }
           }
         } catch (err) {
           console.error("Error loading user context:", err);
@@ -156,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [restaurant?.id]);
 
   return (
-    <AuthContext.Provider value={{ user, userRole, restaurant, restaurantId: restaurant?.id ?? null, loading, setRestaurant: handleSetRestaurant, isDemo: false }}>
+    <AuthContext.Provider value={{ user, userRole, restaurant, restaurantId: restaurant?.id ?? null, loading, setRestaurant: handleSetRestaurant, isDemo: false, globalSelectedDate, setGlobalSelectedDate }}>
       {children}
     </AuthContext.Provider>
   );

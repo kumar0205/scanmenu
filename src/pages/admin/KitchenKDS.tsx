@@ -277,21 +277,7 @@ export default function KitchenKDS() {
 
       const orderNum = String(getOrderNumber(o));
 
-      // 1. Cancellations
-      if (o.status === 'cancelled') {
-        const key = `cancel-${o.id}`;
-        if (!acknowledgedAlerts[key]) {
-          alerts.push({
-            key,
-            type: 'cancelled',
-            orderId: o.id,
-            orderNumber: orderNum,
-            tableNumber: o.tableNumber,
-            title: `Order #${orderNum} Cancelled`,
-            content: `Table ${o.tableNumber || 'Takeaway'} order has been marked as cancelled by admin.`
-          });
-        }
-      }
+      // 1. Cancellations removed as requested
 
       // 2. Extra items added
       if (o.status !== 'cancelled' && o.status !== 'completed') {
@@ -344,8 +330,15 @@ export default function KitchenKDS() {
     });
 
     // Sort active orders oldest first
-    // Pending orders excluded — chef only sees owner-accepted (preparing/ready) orders
-    const active = todayOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled' && o.status !== 'pending');
+    // Chef only sees waiter/owner-accepted active orders (accepted, preparing, ready). Exclude out-of-status ones: completed, cancelled, pending, out_for_delivery, delivered, served
+    const active = todayOrders.filter(o => 
+      o.status !== 'completed' && 
+      o.status !== 'cancelled' && 
+      o.status !== 'pending' && 
+      o.status !== 'out_for_delivery' && 
+      o.status !== 'delivered' && 
+      o.status !== 'served'
+    );
     active.sort((a, b) => {
       const timeA = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now();
       const timeB = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now();
@@ -384,16 +377,16 @@ export default function KitchenKDS() {
   }, [orders, activeTab, showAllCompleted]);
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen text-zinc-100 flex flex-col">
+    <div className="bg-[#F8FAFC] dark:bg-premium-bg min-h-screen text-slate-900 dark:text-premium-text transition-colors duration-200 flex flex-col">
       {/* Header bar */}
-      <header className="bg-[#111111] border-b border-[#222222] px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-30">
+      <header className="bg-white dark:bg-[#111111] border-b border-slate-200 dark:border-[#222222] px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#22c55e]/15 border border-[#22c55e]/30 rounded-xl flex items-center justify-center text-[#22c55e]">
             <ChefHat className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Kitchen Display System</h1>
-            <p className="text-xs text-zinc-500">Real-time Order Preparation Console</p>
+            <h1 className="text-xl font-bold tracking-tight text-slate-950 dark:text-premium-text">Kitchen Display System</h1>
+            <p className="text-xs text-slate-500 dark:text-premium-muted">Real-time Order Preparation Console</p>
           </div>
         </div>
 
@@ -401,7 +394,7 @@ export default function KitchenKDS() {
           {/* Test chime */}
           <button
             onClick={handleTestSound}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1a1a1a] hover:bg-[#252525] text-zinc-300 border border-[#2d2d2d] transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-[#1a1a1a] hover:bg-slate-100 dark:hover:bg-[#252525] text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-[#2d2d2d] transition-all"
             title="Test notification sound chime"
           >
             <Play className="w-3.5 h-3.5" />
@@ -427,7 +420,7 @@ export default function KitchenKDS() {
       </header>
 
       {/* Tabs */}
-      <div className="bg-[#111111]/40 border-b border-[#222222] px-6 py-2 sticky top-[73px] z-20 backdrop-blur-md">
+      <div className="bg-slate-50/80 dark:bg-[#111111]/40 border-b border-slate-200 dark:border-[#222222] px-6 py-2 sticky top-[73px] z-20 backdrop-blur-md">
         <div className="flex flex-wrap gap-1">
           {tabs.map(tab => {
             const count = tab === 'updates' 
@@ -438,7 +431,14 @@ export default function KitchenKDS() {
                     const todayStart = new Date().setHours(0, 0, 0, 0);
                     const ts = typeof o.createdAt?.toMillis === 'function' ? o.createdAt.toMillis() : Date.now();
                     if (ts < todayStart) return false;
-                    if (o.status === 'completed' || o.status === 'cancelled' || o.status === 'pending') return false;
+                    if (
+                      o.status === 'completed' || 
+                      o.status === 'cancelled' || 
+                      o.status === 'pending' || 
+                      o.status === 'out_for_delivery' || 
+                      o.status === 'delivered' || 
+                      o.status === 'served'
+                    ) return false;
                     if (tab === 'active') return true;
                     if (tab === 'cooking') return o.status === 'preparing';
                     if (tab === 'ready') return o.status === 'ready';
@@ -451,8 +451,8 @@ export default function KitchenKDS() {
                 onClick={() => setActiveTab(tab)}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize transition-all relative ${
                   activeTab === tab
-                    ? 'bg-zinc-800 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
+                    ? 'bg-slate-200 dark:bg-zinc-800 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800/40'
                 }`}
               >
                 <span>{tab}</span>
@@ -462,7 +462,7 @@ export default function KitchenKDS() {
                       ? 'bg-red-500 text-white animate-pulse' 
                       : tab === 'ready'
                         ? 'bg-green-500 text-black'
-                        : 'bg-zinc-700 text-zinc-300'
+                        : 'bg-slate-300 dark:bg-zinc-700 text-slate-700 dark:text-zinc-300'
                   }`}>
                     {count}
                   </span>
@@ -472,29 +472,28 @@ export default function KitchenKDS() {
           })}
         </div>
       </div>
-
       {/* Main Content Area */}
       <main className="flex-1 p-6 overflow-y-auto">
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-[#121212] border border-[#222222] rounded-2xl h-56 animate-pulse" />
+              <div key={i} className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-2xl h-56 animate-pulse shadow-sm" />
             ))}
           </div>
         ) : activeTab === 'updates' ? (
           /* Updates alert tab */
           updateAlerts.length === 0 ? (
-            <div className="text-center py-20 bg-[#111111]/30 border border-dashed border-[#222222] rounded-2xl">
-              <ChefHat className="w-16 h-16 text-zinc-800 mx-auto mb-4" />
-              <p className="text-zinc-400 font-medium">No kitchen updates</p>
-              <p className="text-xs text-zinc-600 mt-1">Extra items, notes, or cancellations will show up here.</p>
+            <div className="text-center py-20 bg-white dark:bg-premium-card border border-dashed border-slate-200 dark:border-premium-border rounded-2xl shadow-sm">
+              <ChefHat className="w-16 h-16 text-slate-350 dark:text-zinc-800 mx-auto mb-4" />
+              <p className="text-slate-500 dark:text-zinc-400 font-medium">No kitchen updates</p>
+              <p className="text-xs text-slate-400 dark:text-zinc-650 mt-1">Extra items, notes, or cancellations will show up here.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {updateAlerts.map(alert => (
                 <div 
                   key={alert.key} 
-                  className={`bg-[#121212] border rounded-2xl p-5 flex flex-col justify-between transition-all ${
+                  className={`bg-white dark:bg-premium-card border rounded-2xl p-5 flex flex-col justify-between transition-all shadow-sm dark:shadow-premium ${
                     alert.type === 'cancelled' 
                       ? 'border-red-500/30 shadow-lg shadow-red-950/15' 
                       : alert.type === 'extra'
@@ -508,31 +507,31 @@ export default function KitchenKDS() {
                         <AlertTriangle className={`w-5 h-5 shrink-0 ${
                           alert.type === 'cancelled' ? 'text-red-400' : alert.type === 'extra' ? 'text-amber-400' : 'text-blue-400'
                         }`} />
-                        <span className="font-bold text-base text-white">{alert.title}</span>
+                        <span className="font-bold text-base text-slate-900 dark:text-premium-text">{alert.title}</span>
                       </div>
                       {alert.tableNumber === 'Takeaway' || !alert.tableNumber ? (
-                        <span className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                          <ShoppingBag className="w-3.5 h-3.5 text-amber-400" /> Parcel
+                        <span className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                          <ShoppingBag className="w-3.5 h-3.5" /> Parcel
                         </span>
                       ) : (
-                        <span className="text-xs font-bold bg-[#1d1d1d] text-zinc-400 px-2.5 py-0.5 rounded-full">
+                        <span className="text-xs font-bold bg-slate-100 dark:bg-premium-bg text-slate-600 dark:text-zinc-400 px-2.5 py-0.5 rounded-full">
                           Table {alert.tableNumber}
                         </span>
                       )}
                     </div>
-                    <p className="text-zinc-300 text-sm leading-relaxed">{alert.content}</p>
+                    <p className="text-slate-700 dark:text-zinc-300 text-sm leading-relaxed">{alert.content}</p>
                   </div>
 
                   <div className="mt-5 flex gap-2">
                     <button
                       onClick={() => handleFocusOrder(alert.orderId)}
-                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-[#2d2d2d] transition-all"
+                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 border border-slate-250 dark:border-[#2d2d2d] transition-all"
                     >
                       Locate Order
                     </button>
                     <button
                       onClick={() => acknowledgeAlert(alert.key)}
-                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-[#2d2d2d] transition-all"
+                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-slate-50 dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-[#252525] text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 border border-slate-200 dark:border-[#2d2d2d] transition-all"
                     >
                       Acknowledge
                     </button>
@@ -543,22 +542,22 @@ export default function KitchenKDS() {
           )
         ) : filteredOrders.length === 0 ? (
           /* Empty state */
-          <div className="text-center py-20 bg-[#111111]/30 border border-dashed border-[#222222] rounded-2xl">
-            <ChefHat className="w-16 h-16 text-zinc-850 mx-auto mb-4" />
-            <p className="text-zinc-400 font-medium">No orders in this section</p>
-            <p className="text-xs text-zinc-650 mt-1">Orders placed by customers will stream here automatically.</p>
+          <div className="text-center py-20 bg-white dark:bg-premium-card border border-dashed border-slate-200 dark:border-premium-border rounded-2xl shadow-sm dark:shadow-premium">
+            <ChefHat className="w-16 h-16 text-slate-350 dark:text-zinc-850 mx-auto mb-4" />
+            <p className="text-slate-500 dark:text-zinc-400 font-medium">No orders in this section</p>
+            <p className="text-xs text-slate-400 dark:text-zinc-655 mt-1">Orders placed by customers will stream here automatically.</p>
           </div>
         ) : (
           /* Order grid */
           <div className="space-y-6">
             {activeTab === 'completed' && (
               <div className="flex justify-end">
-                <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={showAllCompleted}
                     onChange={(e) => setShowAllCompleted(e.target.checked)}
-                    className="rounded bg-[#1a1a1a] border-[#2d2d2d] text-zinc-700 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                    className="rounded bg-slate-50 dark:bg-[#1a1a1a] border-slate-250 dark:border-[#2d2d2d] text-zinc-700 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                   />
                   <span>Show all completed orders today</span>
                 </label>
@@ -574,34 +573,34 @@ export default function KitchenKDS() {
                   <div
                     key={order.id}
                     id={`order-card-${order.id}`}
-                    className={`bg-[#121212] border rounded-2xl p-5 flex flex-col gap-4 transition-all duration-300 relative ${
+                    className={`bg-white dark:bg-premium-card border rounded-2xl p-5 flex flex-col gap-4 transition-all duration-300 relative shadow-sm dark:shadow-premium ${
                       isHighlighted
                         ? 'border-green-500 ring-2 ring-green-500/30 scale-[1.02] shadow-lg shadow-green-950/20'
-                        : 'border-[#222222] hover:border-zinc-700/60'
+                        : 'border-slate-200 dark:border-[#222222] hover:border-slate-350 dark:hover:border-zinc-700/60'
                     }`}
                   >
                     {/* Header */}
-                    <div className="flex justify-between items-start border-b border-[#222222] pb-3">
+                    <div className="flex justify-between items-start border-b border-slate-100 dark:border-[#222222] pb-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-lg text-white whitespace-nowrap shrink-0">Order #{orderNum}</span>
+                          <span className="font-bold text-lg text-slate-900 dark:text-white whitespace-nowrap shrink-0">Order #{orderNum}</span>
                           {order.isParcel || order.tableNumber === 'Takeaway' ? (
-                            <span className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold px-2.5 py-0.5 rounded uppercase tracking-wider shrink-0" title="Parcel Order">
-                              <ShoppingBag className="w-3.5 h-3.5 text-amber-400" /> Parcel
+                            <span className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 text-xs font-bold px-2.5 py-0.5 rounded uppercase tracking-wider shrink-0" title="Parcel Order">
+                              <ShoppingBag className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" /> Parcel
                             </span>
                           ) : (
-                            <span className="text-xs bg-[#1a1a1a] text-zinc-400 font-semibold px-2 py-0.5 rounded whitespace-nowrap shrink-0">
+                            <span className="text-xs bg-slate-100 dark:bg-premium-bg text-slate-600 dark:text-zinc-400 font-semibold px-2 py-0.5 rounded whitespace-nowrap shrink-0">
                               Table {order.tableNumber}
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-zinc-650 uppercase tracking-wider font-semibold mt-1">
+                        <p className="text-[10px] text-slate-400 dark:text-zinc-650 uppercase tracking-wider font-semibold mt-1">
                           Status: {order.status}
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-1 text-zinc-400 text-sm font-semibold">
-                        <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                      <div className="flex items-center gap-1 text-slate-500 dark:text-zinc-400 text-sm font-semibold">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-500" />
                         <span>{getElapsedTime(order.createdAt)}</span>
                       </div>
                     </div>
@@ -614,13 +613,13 @@ export default function KitchenKDS() {
                         const suggestions = getBatchSuggestions(item, order);
 
                         return (
-                          <div key={idx} className="space-y-1.5 border-b border-[#1b1b1b] pb-3 last:border-none last:pb-0">
+                          <div key={idx} className="space-y-1.5 border-b border-slate-50 dark:border-[#1b1b1b] pb-3 last:border-none last:pb-0">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-start gap-2">
                                 <span className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'}`} />
                                 <div>
-                                  <p className={`text-base font-semibold ${isItemReady ? 'line-through text-zinc-600' : 'text-zinc-100'}`}>
-                                    <span className="text-white font-bold mr-1.5">{item.qty}x</span>
+                                  <p className={`text-base font-semibold ${isItemReady ? 'line-through text-slate-450 dark:text-zinc-600' : 'text-slate-800 dark:text-zinc-100'}`}>
+                                    <span className="text-slate-900 dark:text-white font-bold mr-1.5">{item.qty}x</span>
                                     {item.name}
                                   </p>
                                   {/* Special request / item notes */}
@@ -632,7 +631,7 @@ export default function KitchenKDS() {
                                   {order.note && order.note.trim() !== '' && (
                                     <button
                                       onClick={() => toast(`Request: "${order.note}"`, { icon: '💬', id: `note-${order.id}`, duration: 5000 })}
-                                      className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 cursor-pointer transition-all select-none text-left"
+                                      className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/20 cursor-pointer transition-all select-none text-left"
                                     >
                                       💬 Note: {order.note}
                                     </button>
@@ -644,12 +643,12 @@ export default function KitchenKDS() {
                               {order.status !== 'completed' && order.status !== 'cancelled' && (
                                 <div className="flex items-center gap-1 shrink-0">
                                   {isItemReady ? (
-                                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-green-500/10 text-green-400 border border-green-500/20">
+                                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-green-500/10 text-green-500 dark:text-green-400 border border-green-500/20">
                                       <Check className="w-3.5 h-3.5" /> Done
                                     </span>
                                   ) : isItemPreparing ? (
                                     <>
-                                      <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+                                      <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20 animate-pulse">
                                         Cooking...
                                       </span>
                                       <button
@@ -664,7 +663,7 @@ export default function KitchenKDS() {
                                     <>
                                       <button
                                         onClick={() => updateItemStatus(order.id, idx, 'preparing')}
-                                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-[#2d2d2d] transition-all"
+                                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-[#2d2d2d] transition-all"
                                       >
                                         Fire
                                       </button>
@@ -683,7 +682,7 @@ export default function KitchenKDS() {
 
                             {/* Batch Suggestions */}
                             {suggestions.length > 0 && !isItemReady && (
-                              <div className="flex flex-wrap items-center gap-1.5 pl-4.5 text-xs text-zinc-500">
+                              <div className="flex flex-wrap items-center gap-1.5 pl-4.5 text-xs text-slate-400 dark:text-zinc-500">
                                 <span className="text-[11px] font-medium opacity-60">also needed →</span>
                                 {suggestions.map((sug, sIdx) => (
                                   <button
@@ -691,8 +690,8 @@ export default function KitchenKDS() {
                                     onClick={() => handleFocusOrder(sug.orderId)}
                                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border transition-all ${
                                       sug.hasNote
-                                        ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'
-                                        : 'bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/20'
+                                        ? 'bg-red-500/10 hover:bg-red-500/20 text-red-550 dark:text-red-400 border-red-500/20'
+                                        : 'bg-green-500/10 hover:bg-green-500/20 text-green-550 dark:text-green-400 border-green-500/20'
                                     }`}
                                     title={sug.hasNote ? 'Future order has special notes' : 'Safe to batch cook'}
                                   >
@@ -709,12 +708,12 @@ export default function KitchenKDS() {
 
                     {/* Card Actions */}
                     {order.status !== 'completed' && order.status !== 'cancelled' && (
-                      <div className="border-t border-[#222222] pt-4 mt-2">
+                      <div className="border-t border-slate-100 dark:border-[#222222] pt-4 mt-2">
                         {(order.status === 'pending' || order.status === 'accepted') && (
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleStartCookingAll(order)}
-                              className="flex-1 py-2 rounded-xl text-xs font-bold bg-[#1a1a1a] hover:bg-[#252525] text-white border border-[#2d2d2d] transition-all"
+                              className="flex-1 py-2 rounded-xl text-xs font-bold bg-slate-50 dark:bg-[#1a1a1a] hover:bg-slate-100 dark:hover:bg-[#252525] text-slate-800 dark:text-white border border-slate-250 dark:border-[#2d2d2d] transition-all"
                             >
                               Start Cooking All
                             </button>
@@ -737,7 +736,7 @@ export default function KitchenKDS() {
                             </button>
                             <button
                               onClick={() => handleCancelOrder(order)}
-                              className="px-3 py-2 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-zinc-850 hover:text-red-400 text-zinc-550 border border-[#2d2d2d] transition-all"
+                              className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-50 dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-850 hover:text-red-500 text-slate-500 dark:text-zinc-550 border border-slate-200 dark:border-[#2d2d2d] transition-all"
                               title="Cancel Order"
                             >
                               Cancel
@@ -747,7 +746,7 @@ export default function KitchenKDS() {
 
                         {order.status === 'ready' && (
                           <div className="flex gap-2 w-full">
-                            <span className="flex-1 py-2 rounded-xl text-xs font-bold bg-green-500/10 text-green-400 border border-green-500/20 text-center flex items-center justify-center gap-1.5">
+                            <span className="flex-1 py-2 rounded-xl text-xs font-bold bg-green-500/10 text-green-500 dark:text-green-400 border border-green-500/20 text-center flex items-center justify-center gap-1.5">
                               <Check className="w-3.5 h-3.5" /> Prepared & Ready to Serve
                             </span>
                             <button
@@ -755,7 +754,7 @@ export default function KitchenKDS() {
                                 // Reset statuses to preparing
                                 handleStartCookingAll(order);
                               }}
-                              className="px-3 py-2 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-zinc-850 hover:text-zinc-300 text-zinc-500 border border-[#2d2d2d] transition-all flex items-center justify-center gap-1"
+                              className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-50 dark:bg-zinc-900 hover:bg-slate-150 dark:hover:bg-zinc-850 hover:text-slate-800 dark:hover:text-zinc-300 text-slate-500 dark:text-zinc-500 border border-slate-200 dark:border-[#2d2d2d] transition-all flex items-center justify-center gap-1"
                               title="Send back to Cooking"
                             >
                               <RotateCcw className="w-3.5 h-3.5" /> Recall

@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { QrCode, ArrowLeft, ChefHat, Crown, UtensilsCrossed } from 'lucide-react';
+import { QrCode, ArrowLeft, ChefHat, Crown, UtensilsCrossed, Bike } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { signIn, resetPassword, signOut } from '../firebase/auth';
 import { validateAndSignInStaff } from '../firebase/staffAuth';
@@ -10,7 +10,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useAuthContext } from '../context/AuthContext';
 
-type RoleView = 'select' | 'owner' | 'chef' | 'waiter';
+type RoleView = 'select' | 'owner' | 'chef' | 'waiter' | 'rider';
 
 const ROLE_CARDS = [
   {
@@ -43,6 +43,16 @@ const ROLE_CARDS = [
     bg: 'rgba(59,130,246,0.1)',
     border: 'rgba(59,130,246,0.25)',
   },
+  {
+    id: 'rider' as const,
+    emoji: '🚴',
+    icon: Bike,
+    label: 'Rider',
+    description: 'Deliver orders',
+    color: '#a855f7',
+    bg: 'rgba(168,85,247,0.1)',
+    border: 'rgba(168,85,247,0.25)',
+  },
 ];
 
 export default function Login() {
@@ -50,13 +60,13 @@ export default function Login() {
   const { user, userRole, loading: authLoading } = useAuthContext();
   const [view, setView] = useState<RoleView>('select');
 
-  // Owner form state
+  // Email/Password form state (Owner & Rider)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetting, setResetting] = useState(false);
 
-  // Staff form state
+  // Staff form state (Chef & Waiter)
   const [restaurantCode, setRestaurantCode] = useState('');
   const [pin, setPin] = useState('');
   const [staffLoading, setStaffLoading] = useState(false);
@@ -69,11 +79,13 @@ export default function Login() {
         navigate('/admin/kitchen', { replace: true });
       } else if (userRole === 'waiter') {
         navigate('/admin/orders', { replace: true });
+      } else if (userRole === 'rider') {
+        navigate('/admin/rider', { replace: true });
       }
     }
   }, [user, userRole, authLoading, navigate]);
 
-  async function handleOwnerSubmit(e: FormEvent) {
+  async function handleEmailPasswordSubmit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     const cleanEmail = email.trim().toLowerCase();
@@ -90,8 +102,25 @@ export default function Login() {
         toast.error('Super Admins must sign in through the Super Admin portal.');
         return;
       }
+
+      if (view === 'rider' && role !== 'rider') {
+        await signOut();
+        toast.error('This account is not registered as a Rider.');
+        return;
+      }
+
+      if (view === 'owner' && role !== 'owner' && role !== 'admin') {
+        await signOut();
+        toast.error('This account is not registered as an Owner.');
+        return;
+      }
+
       toast.success('Welcome back!');
-      navigate('/admin/dashboard');
+      if (role === 'rider') {
+        navigate('/admin/rider');
+      } else {
+        navigate('/admin/dashboard');
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to sign in';
       toast.error(
@@ -130,7 +159,6 @@ export default function Login() {
     try {
       await validateAndSignInStaff(slug, role, cleanPin);
       toast.success(`Welcome! Signing you in…`);
-      // AuthContext will load role from users doc and navigate in the useEffect above
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed';
       if (msg.includes('resource-exhausted')) {
@@ -149,6 +177,8 @@ export default function Login() {
 
   function goBack() {
     setView('select');
+    setEmail('');
+    setPassword('');
     setRestaurantCode('');
     setPin('');
   }
@@ -171,7 +201,13 @@ export default function Login() {
           </div>
           <h1 className="text-white text-2xl font-bold tracking-tight">ScanMenu</h1>
           <p className="text-[#52525b] text-sm mt-1">
-            {view === 'select' ? 'Who are you signing in as?' : view === 'owner' ? 'Sign in to your dashboard' : `${selectedCard?.label} Access`}
+            {view === 'select' 
+              ? 'Who are you signing in as?' 
+              : view === 'owner' 
+              ? 'Sign in to your dashboard' 
+              : view === 'rider'
+              ? 'Rider login credentials'
+              : `${selectedCard?.label} Access`}
           </p>
         </div>
 
@@ -214,8 +250,8 @@ export default function Login() {
           </div>
         )}
 
-        {/* === OWNER FORM === */}
-        {view === 'owner' && (
+        {/* === OWNER / RIDER EMAIL-PASSWORD FORM === */}
+        {(view === 'owner' || view === 'rider') && (
           <div
             className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6 animate-in"
             style={{ animation: 'slideIn 0.2s ease-out' }}
@@ -227,7 +263,24 @@ export default function Login() {
               <ArrowLeft className="w-4 h-4" /> Back
             </button>
 
-            <form onSubmit={handleOwnerSubmit} className="space-y-4">
+            {/* Role Header */}
+            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[#2a2a2a]">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                style={{
+                  background: selectedCard?.bg,
+                  border: `1px solid ${selectedCard?.border}`,
+                }}
+              >
+                {selectedCard?.emoji}
+              </div>
+              <div>
+                <p className="text-white font-semibold text-sm">{selectedCard?.label} Login</p>
+                <p className="text-[#52525b] text-xs">{selectedCard?.description}</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleEmailPasswordSubmit} className="space-y-4">
               <Input
                 label="Email"
                 type="email"
@@ -239,14 +292,16 @@ export default function Login() {
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-sm font-medium text-white">Password</label>
-                  <button
-                    type="button"
-                    onClick={handleResetPassword}
-                    disabled={resetting}
-                    className="text-xs text-[#22c55e] hover:underline disabled:opacity-50"
-                  >
-                    Forgot Password?
-                  </button>
+                  {view === 'owner' && (
+                    <button
+                      type="button"
+                      onClick={handleResetPassword}
+                      disabled={resetting}
+                      className="text-xs text-[#22c55e] hover:underline disabled:opacity-50"
+                    >
+                      Forgot Password?
+                    </button>
+                  )}
                 </div>
                 <Input
                   type="password"
@@ -261,16 +316,18 @@ export default function Login() {
               </Button>
             </form>
 
-            <p className="text-center text-sm text-[#52525b] mt-5">
-              Don't have an account?{' '}
-              <Link to="/register" className="text-[#22c55e] hover:underline font-medium">
-                Sign up
-              </Link>
-            </p>
+            {view === 'owner' && (
+              <p className="text-center text-sm text-[#52525b] mt-5">
+                Don't have an account?{' '}
+                <Link to="/register" className="text-[#22c55e] hover:underline font-medium">
+                  Sign up
+                </Link>
+              </p>
+            )}
           </div>
         )}
 
-        {/* === CHEF / WAITER FORM === */}
+        {/* === CHEF / WAITER PIN FORM === */}
         {(view === 'chef' || view === 'waiter') && (
           <div
             className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6 animate-in"

@@ -187,15 +187,15 @@ export default function Analytics() {
   // ==========================================
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen text-white">
+    <div className="bg-[#F8FAFC] dark:bg-premium-bg min-h-screen text-slate-900 dark:text-premium-text transition-colors duration-200">
       <AdminHeader title="Restaurant Analytics" />
       
       <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto pb-16">
         
         {/* Toggle navigation and Date Controllers */}
-        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-[#111111] border border-[#2a2a2a] rounded-2xl p-4 shadow-lg">
+        <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-2xl p-4 shadow-sm dark:shadow-premium">
           {/* Pill Toggle */}
-          <div className="flex bg-[#1a1a1a] rounded-xl p-1 border border-[#2a2a2a] self-start md:self-auto">
+          <div className="flex bg-slate-100 dark:bg-premium-bg rounded-xl p-1 border border-slate-200 dark:border-premium-border self-start md:self-auto">
             {(['day', 'week', 'month'] as const).map(tab => (
               <button
                 key={tab}
@@ -207,8 +207,8 @@ export default function Analytics() {
                 }}
                 className={`px-4 py-2 rounded-lg text-sm font-bold capitalize transition-all duration-150 ${
                   activeTab === tab
-                    ? 'bg-[#22c55e] text-black shadow-md'
-                    : 'text-[#a1a1aa] hover:text-white'
+                    ? 'bg-[#22c55e] text-white shadow-md'
+                    : 'text-slate-500 dark:text-premium-muted hover:text-slate-900 dark:hover:text-premium-text'
                 }`}
               >
                 {tab}
@@ -220,34 +220,34 @@ export default function Analytics() {
           <div className="flex items-center gap-3 self-end md:self-auto">
             {activeTab === 'day' && (
               <>
-                <button onClick={() => adjustDate(-1)} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#222] transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+                <button onClick={() => adjustDate(-1)} className="p-2 rounded-lg bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border hover:bg-slate-100 dark:hover:bg-premium-hover transition-colors"><ChevronLeft className="w-4 h-4 text-slate-650 dark:text-premium-text" /></button>
                 <input
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-sm font-semibold text-white focus:outline-none focus:border-[#22c55e]"
+                  className="bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-900 dark:text-premium-text focus:outline-none focus:border-premium-primary"
                 />
-                <button onClick={() => adjustDate(1)} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#222] transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                <button onClick={() => adjustDate(1)} className="p-2 rounded-lg bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border hover:bg-slate-100 dark:hover:bg-premium-hover transition-colors"><ChevronRight className="w-4 h-4 text-slate-650 dark:text-premium-text" /></button>
               </>
             )}
 
             {activeTab === 'week' && (
-              <div className="text-sm font-bold text-[#a1a1aa] flex items-center gap-2">
-                <button onClick={() => adjustDate(-7)} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#222] transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-                <span className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-white">
+              <div className="text-sm font-bold text-slate-500 dark:text-premium-muted flex items-center gap-2">
+                <button onClick={() => adjustDate(-7)} className="p-2 rounded-lg bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border hover:bg-slate-100 dark:hover:bg-premium-hover transition-colors"><ChevronLeft className="w-4 h-4 text-slate-650 dark:text-premium-text" /></button>
+                <span className="bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border rounded-lg px-3 py-1.5 text-slate-900 dark:text-premium-text">
                   Week of {weekDates[0]} to {weekDates[6]}
                 </span>
-                <button onClick={() => adjustDate(7)} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#222] transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                <button onClick={() => adjustDate(7)} className="p-2 rounded-lg bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border hover:bg-slate-100 dark:hover:bg-premium-hover transition-colors"><ChevronRight className="w-4 h-4 text-slate-650 dark:text-premium-text" /></button>
               </div>
             )}
 
             {activeTab === 'month' && (
               <>
-                <button onClick={() => adjustMonth(-1)} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#222] transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-                <span className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-1.5 text-sm font-semibold text-white">
+                <button onClick={() => adjustMonth(-1)} className="p-2 rounded-lg bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border hover:bg-slate-100 dark:hover:bg-premium-hover transition-colors"><ChevronLeft className="w-4 h-4 text-slate-650 dark:text-premium-text" /></button>
+                <span className="bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border rounded-lg px-4 py-1.5 text-sm font-semibold text-slate-900 dark:text-premium-text">
                   {new Date(selectedMonth + '-02').toLocaleString('default', { month: 'long', year: 'numeric' })}
                 </span>
-                <button onClick={() => adjustMonth(1)} className="p-2 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#222] transition-colors"><ChevronRight className="w-4 h-4" /></button>
+                <button onClick={() => adjustMonth(1)} className="p-2 rounded-lg bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border hover:bg-slate-100 dark:hover:bg-premium-hover transition-colors"><ChevronRight className="w-4 h-4 text-slate-650 dark:text-premium-text" /></button>
               </>
             )}
           </div>
@@ -1270,15 +1270,15 @@ function MonthViewLayout({
 // Helper Card Component
 function StatCard({ title, value, icon, subtitle }: { title: string; value: string | number; icon: React.ReactNode; subtitle?: string }) {
   return (
-    <div className="bg-[#111111] border border-[#2a2a2a] rounded-2xl p-5 hover:scale-[1.02] hover:shadow-[0_8px_30px_rgb(0,0,0,0.5)] transition-all duration-200">
+    <div className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-2xl p-5 hover:scale-[1.02] hover:shadow-lg dark:hover:shadow-premium transition-all duration-200 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[#a1a1aa] text-xs font-semibold uppercase tracking-wider">{title}</span>
-        <div className="w-8 h-8 rounded-lg bg-[#1a1a1a] flex items-center justify-center border border-[#2a2a2a]">
+        <span className="text-slate-500 dark:text-premium-muted text-xs font-semibold uppercase tracking-wider">{title}</span>
+        <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-premium-bg flex items-center justify-center border border-slate-200 dark:border-premium-border">
           {icon}
         </div>
       </div>
-      <p className="text-white text-2xl font-bold tracking-tight">{value}</p>
-      {subtitle && <p className="text-[#52525b] text-[10px] font-medium mt-1 leading-none">{subtitle}</p>}
+      <p className="text-slate-900 dark:text-premium-text text-2xl font-bold tracking-tight">{value}</p>
+      {subtitle && <p className="text-slate-400 dark:text-premium-muted text-[10px] font-medium mt-1 leading-none">{subtitle}</p>}
     </div>
   );
 }

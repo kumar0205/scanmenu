@@ -43,7 +43,7 @@ export default function Ratings() {
   }
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen">
+    <div className="bg-[#F8FAFC] dark:bg-premium-bg min-h-screen text-slate-900 dark:text-premium-text transition-colors duration-200">
       <AdminHeader title={t('header.title.ratings')} />
       <div className="p-6 space-y-5">
         <div className="grid grid-cols-3 gap-4">
@@ -52,49 +52,49 @@ export default function Ratings() {
             { icon: CheckCircle, label: t('ratings.verified'), value: verified, color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
             { icon: Gift, label: t('ratings.average'), value: rewarded, color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
           ].map(({ icon: Icon, label, value, color, bg }) => (
-            <div key={label} className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+            <div key={label} className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-xl p-5 shadow-sm dark:shadow-premium">
               <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style={{ background: bg }}>
                 <Icon className="w-5 h-5" style={{ color }} />
               </div>
-              <p className="text-white text-2xl font-semibold">{value}</p>
-              <p className="text-[#a1a1aa] text-xs mt-0.5">{label}</p>
+              <p className="text-slate-900 dark:text-premium-text text-2xl font-semibold">{value}</p>
+              <p className="text-slate-500 dark:text-premium-muted text-xs mt-0.5">{label}</p>
             </div>
           ))}
         </div>
 
-        <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
-          <h3 className="text-white font-semibold flex items-center gap-2 mb-4">
-            <Star className="w-4 h-4 text-[#22c55e]" /> {t('header.title.ratings')}
+        <div className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-xl p-5 shadow-sm dark:shadow-premium">
+          <h3 className="text-slate-950 dark:text-premium-text font-semibold flex items-center gap-2 mb-4">
+            <Star className="w-4 h-4 text-premium-primary" /> {t('header.title.ratings')}
           </h3>
 
           {loading ? (
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32" />)}</div>
           ) : ratings.length === 0 ? (
             <div className="text-center py-12">
-              <Star className="w-16 h-16 text-[#2a2a2a] mx-auto mb-3" />
-              <p className="text-white font-medium">{t('ratings.noRatings')}</p>
+              <Star className="w-16 h-16 text-slate-200 dark:text-[#2a2a2a] mx-auto mb-3" />
+              <p className="text-slate-500 dark:text-premium-muted font-medium">{t('ratings.noRatings')}</p>
             </div>
           ) : (
             <div className="space-y-3">
               {ratings.map(r => (
-                <div key={r.id} className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-4">
+                <div key={r.id} className="bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border rounded-xl p-4">
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <p className="text-white font-medium">{r.customerName}</p>
-                      <p className="text-[#52525b] text-xs">{t('generic.table')} {r.tableNumber} · {formatTimeAgo(r.createdAt)}</p>
+                      <p className="text-slate-900 dark:text-premium-text font-medium">{r.customerName}</p>
+                      <p className="text-slate-400 dark:text-premium-muted text-xs">{t('generic.table')} {r.tableNumber} · {formatTimeAgo(r.createdAt)}</p>
                     </div>
                     <Badge variant={r.verified ? 'green' : 'amber'}>{r.verified ? t('ratings.verified') : t('orders.status.pending')}</Badge>
                   </div>
                   <div className="flex items-center gap-0.5 mb-2">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className={`w-4 h-4 ${i < r.stars ? 'text-[#f59e0b] fill-[#f59e0b]' : 'text-[#2a2a2a]'}`} />
+                      <Star key={i} className={`w-4 h-4 ${i < r.stars ? 'text-[#f59e0b] fill-[#f59e0b]' : 'text-slate-200 dark:text-[#2a2a2a]'}`} />
                     ))}
                   </div>
                   {r.comment && (
-                    <p className="text-[#a1a1aa] text-sm italic">"{r.comment}"</p>
+                    <p className="text-slate-500 dark:text-premium-muted text-sm italic">"{r.comment}"</p>
                   )}
                   {r.rewardClaimed && (
-                    <div className="flex items-center gap-1.5 mt-2 text-[#22c55e] text-xs">
+                    <div className="flex items-center gap-1.5 mt-2 text-[#22c55e] text-xs font-semibold">
                       <Gift className="w-3.5 h-3.5" />
                       Claimed: {r.rewardClaimed}
                     </div>

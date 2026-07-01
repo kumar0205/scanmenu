@@ -75,18 +75,23 @@ export default function Tables() {
 
     async function generateAll() {
       const results: Record<string, string> = {};
-      const promises = tables.map(async table => {
-        const url = buildQrUrl(restaurant!.slug, table.number, getTableQrToken(table));
-        try {
-          results[table.id] = await generateQRDataURL(url);
-        } catch {
-          // Individual card renders a fallback when QR generation fails.
+      try {
+        const promises = tables.map(async table => {
+          try {
+            const url = buildQrUrl(restaurant!.slug, table.number, getTableQrToken(table));
+            results[table.id] = await generateQRDataURL(url);
+          } catch (err) {
+            console.error(`Failed to generate QR for table ${table.number}:`, err);
+          }
+        });
+        await Promise.all(promises);
+      } catch (err) {
+        console.error("Failed to generate some or all QR codes:", err);
+      } finally {
+        if (!cancelled) {
+          setQrImages(results);
+          setQrLoading(false);
         }
-      });
-      await Promise.all(promises);
-      if (!cancelled) {
-        setQrImages(results);
-        setQrLoading(false);
       }
     }
 
@@ -228,17 +233,17 @@ export default function Tables() {
   }
 
   return (
-    <div className="bg-[#0a0a0a] min-h-screen">
+    <div className="bg-[#F8FAFC] dark:bg-premium-bg min-h-screen text-slate-900 dark:text-premium-text transition-colors duration-200">
       <AdminHeader title={t('header.title.tables')} />
       <div className="p-6 space-y-6">
         {/* Table Management */}
-        <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+        <div className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-xl p-5 shadow-sm dark:shadow-premium">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold flex items-center gap-2"><Grid3X3 className="w-4 h-4 text-[#22c55e]" /> {t('header.title.tables')}</h3>
+            <h3 className="text-slate-950 dark:text-premium-text font-semibold flex items-center gap-2"><Grid3X3 className="w-4 h-4 text-premium-primary" /> {t('header.title.tables')}</h3>
             <Button size="sm" onClick={() => setAddModal(true)}><Plus className="w-4 h-4" /> {t('tables.addTable')}</Button>
           </div>
           {tables.length === 0 ? (
-            <div className="text-center py-8 text-[#52525b] text-sm">{t('tables.noTables')}</div>
+            <div className="text-center py-8 text-slate-500 dark:text-premium-muted text-sm">{t('tables.noTables')}</div>
           ) : (
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
               {tables.map(table => (
@@ -248,7 +253,7 @@ export default function Tables() {
                   className={`w-full aspect-square rounded-xl border-2 flex flex-col items-center justify-center cursor-pointer transition-all duration-150 hover:scale-105 ${
                     table.status === 'available' ? 'border-[#22c55e] bg-[rgba(34,197,94,0.1)] text-[#22c55e]' :
                     table.status === 'occupied' ? 'border-[#f59e0b] bg-[rgba(245,158,11,0.1)] text-[#f59e0b]' :
-                    'border-[#2a2a2a] bg-[#1a1a1a] text-[#52525b]'
+                    'border-slate-200 dark:border-premium-border bg-slate-100 dark:bg-premium-bg text-slate-400 dark:text-premium-muted'
                   }`}
                 >
                   <span className="font-bold text-xl">{table.number}</span>
@@ -260,9 +265,9 @@ export default function Tables() {
         </div>
 
         {/* QR Codes */}
-        <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-5">
+        <div className="bg-white dark:bg-premium-card border border-slate-200 dark:border-premium-border rounded-xl p-5 shadow-sm dark:shadow-premium">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold flex items-center gap-2"><QrCode className="w-4 h-4 text-[#22c55e]" /> {t('dashboard.qrCodes')}</h3>
+            <h3 className="text-slate-950 dark:text-premium-text font-semibold flex items-center gap-2"><QrCode className="w-4 h-4 text-premium-primary" /> {t('dashboard.qrCodes')}</h3>
             {tables.length > 0 && (
               <Button variant="outline" size="sm" onClick={handleDownloadAll} disabled={qrLoading}>
                 <Download className="w-4 h-4" /> {t('tables.downloadQr')}
@@ -270,13 +275,13 @@ export default function Tables() {
             )}
           </div>
           {tables.length === 0 ? (
-            <div className="text-center py-8 text-[#52525b] text-sm">{t('tables.noTables')}</div>
+            <div className="text-center py-8 text-slate-500 dark:text-premium-muted text-sm">{t('tables.noTables')}</div>
           ) : qrLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
               {tables.map(table => (
-                <div key={table.id} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl p-4 flex flex-col items-center gap-3">
-                  <p className="text-white font-semibold text-sm">{t('generic.table')} {table.number}</p>
-                  <div className="w-[180px] h-[180px] bg-[#1a1a1a] rounded-lg animate-pulse" />
+                <div key={table.id} className="bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border rounded-xl p-4 flex flex-col items-center gap-3">
+                  <p className="text-slate-900 dark:text-premium-text font-semibold text-sm">{t('generic.table')} {table.number}</p>
+                  <div className="w-[180px] h-[180px] bg-slate-100 dark:bg-premium-card rounded-lg animate-pulse" />
                 </div>
               ))}
             </div>
@@ -286,8 +291,8 @@ export default function Tables() {
                 const qrSrc = qrImages[table.id];
                 const qrUrl = buildQrUrl(restaurant?.slug ?? '', table.number, getTableQrToken(table));
                 return (
-                  <div key={table.id} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl p-4 flex flex-col items-center gap-3">
-                    <p className="text-white font-semibold text-sm">{t('generic.table')} {table.number}</p>
+                  <div key={table.id} className="bg-slate-50 dark:bg-premium-bg border border-slate-200 dark:border-premium-border rounded-xl p-4 flex flex-col items-center gap-3">
+                    <p className="text-slate-900 dark:text-premium-text font-semibold text-sm">{t('generic.table')} {table.number}</p>
                     {qrSrc ? (
                       <img
                         src={qrSrc}
@@ -295,25 +300,25 @@ export default function Tables() {
                         className="w-[180px] h-[180px] rounded-lg bg-white p-1"
                       />
                     ) : (
-                      <div className="w-[180px] h-[180px] bg-[#1a1a1a] rounded-lg flex items-center justify-center text-[#52525b] text-xs">
+                      <div className="w-[180px] h-[180px] bg-slate-100 dark:bg-premium-card rounded-lg flex items-center justify-center text-slate-500 dark:text-premium-muted text-xs">
                         Failed to generate
                       </div>
                     )}
-                    <p className="text-[#52525b] text-[10px] text-center truncate w-full" title={qrUrl}>
+                    <p className="text-slate-500 dark:text-premium-muted text-[10px] text-center truncate w-full" title={qrUrl}>
                       {qrUrl}
                     </p>
                     <div className="flex gap-2 w-full">
                       <button
                         onClick={() => handleDownload(table)}
                         disabled={!qrSrc}
-                        className="flex-1 flex items-center justify-center gap-1 border border-[#2a2a2a] text-[#a1a1aa] hover:text-white hover:border-[#3a3a3a] disabled:opacity-40 disabled:cursor-not-allowed text-xs py-1.5 rounded-lg transition-colors"
+                        className="flex-1 flex items-center justify-center gap-1 border border-slate-200 dark:border-premium-border text-slate-650 dark:text-premium-text hover:text-premium-primary hover:border-premium-primary disabled:opacity-40 disabled:cursor-not-allowed text-xs py-1.5 rounded-lg transition-colors"
                       >
                         <Download className="w-3 h-3" /> PNG
                       </button>
                       <button
                         onClick={() => handlePrint(table)}
                         disabled={!qrSrc}
-                        className="flex-1 flex items-center justify-center gap-1 border border-[#2a2a2a] text-[#a1a1aa] hover:text-white hover:border-[#3a3a3a] disabled:opacity-40 disabled:cursor-not-allowed text-xs py-1.5 rounded-lg transition-colors"
+                        className="flex-1 flex items-center justify-center gap-1 border border-slate-200 dark:border-premium-border text-slate-650 dark:text-premium-text hover:text-premium-primary hover:border-premium-primary disabled:opacity-40 disabled:cursor-not-allowed text-xs py-1.5 rounded-lg transition-colors"
                       >
                         <Printer className="w-3 h-3" /> Print
                       </button>
@@ -338,7 +343,7 @@ export default function Tables() {
 
       {selectedTable && (
         <Modal open={!!selectedTable} onClose={() => setSelectedTable(null)} title={`${t('generic.table')} ${selectedTable.number}`}>
-          <p className="text-[#a1a1aa] text-sm mb-4">Current status: <span className="text-white">{selectedTable.status}</span></p>
+          <p className="text-slate-500 dark:text-premium-muted text-sm mb-4">Current status: <span className="text-slate-900 dark:text-premium-text font-bold">{selectedTable.status}</span></p>
           <div className="space-y-2">
             {selectedTable.status !== 'available' && (
               <Button variant="outline" fullWidth onClick={() => handleStatusChange(selectedTable, 'available')}>

@@ -42,6 +42,24 @@ export interface Restaurant {
     sgstPercent: number;
   };
   notificationSoundUrl?: string;
+  settings?: {
+    ordering: {
+      qr: boolean;
+      delivery: boolean;
+    };
+    fees: {
+      platformFee: number;
+      deliveryFee: number;
+    };
+    delivery: {
+      radius: number;
+      minimumOrder: number;
+      zones: string[];
+      estimatedDeliveryTime?: string;
+      places?: Array<{ place: string; fee: number }>;
+    };
+    customDomain?: string;
+  };
   createdAt: Timestamp;
 }
 
@@ -95,12 +113,44 @@ export interface Order {
   tableNumber: string;
   items: OrderItem[];
   totalAmount: number;
-  status: 'pending' | 'accepted' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'preparing' | 'ready' | 'served' | 'out_for_delivery' | 'delivered' | 'completed' | 'cancelled';
   note: string;
   ratingSubmitted: boolean;
   sessionId?: string;
   paymentStatus?: 'unpaid' | 'verifying' | 'paid';
+  paymentMethod?: 'cash' | 'upi';
   isParcel?: boolean;
+  orderType?: 'dinein' | 'delivery';
+  orderSource?: 'qr' | 'domain';
+  customerPhone?: string;
+  address?: {
+    id: string;
+    title: string;
+    name: string;
+    phone: string;
+    address: string;
+    street?: string;
+    landmark?: string;
+    town: string;
+    pincode: string;
+    latitude?: number;
+    longitude?: number;
+  } | null;
+  subtotal?: number;
+  taxes?: number;
+  deliveryFee?: number;
+  platformFee?: number;
+  total?: number;
+  assignedRiderId?: string | null;
+  assignedRiderName?: string | null;
+  timeline?: {
+    orderedAt: Timestamp;
+    acceptedAt?: Timestamp;
+    preparingAt?: Timestamp;
+    readyAt?: Timestamp;
+    pickedUpAt?: Timestamp;
+    deliveredAt?: Timestamp;
+  };
   createdAt: Timestamp;
   dailyOrderId?: number;
   orderDate?: string;
@@ -123,7 +173,7 @@ export interface User {
   restaurantId: string;
   email: string;
   displayName: string;
-  role: 'owner' | 'chef' | 'waiter';
+  role: 'owner' | 'chef' | 'waiter' | 'rider';
   createdAt: Timestamp;
   lastLoginAt?: Timestamp;
 }

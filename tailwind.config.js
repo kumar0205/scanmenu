@@ -24,12 +24,24 @@ export default {
           600: '#6B6560',   // secondary text
           800: '#2E2B27',   // primary text
           900: '#1A1814',   // headings
-        }
+        },
+        // Premium Dark mode SaaS palette
+        'premium-bg': '#0B0F19',
+        'premium-sidebar': '#111827',
+        'premium-card': '#1E293B',
+        'premium-hover': '#273449',
+        'premium-border': '#334155',
+        'premium-primary': '#3B82F6',
+        'premium-success': '#22C55E',
+        'premium-warning': '#F59E0B',
+        'premium-danger': '#EF4444',
+        'premium-muted': '#94A3B8',
+        'premium-text': '#F8FAFC',
       },
       fontFamily: {
         'display': ['"Playfair Display"', 'Georgia', 'serif'],
-        'ui':      ['"DM Sans"', 'system-ui', 'sans-serif'],
-        'sans':    ['"DM Sans"', 'system-ui', 'sans-serif'],
+        'ui':      ['"Inter"', '"DM Sans"', 'system-ui', 'sans-serif'],
+        'sans':    ['"Inter"', '"DM Sans"', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         'card':   '16px',
@@ -39,6 +51,7 @@ export default {
       boxShadow: {
         'card':  '0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)',
         'float': '0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)',
+        'premium': '0 4px 20px -2px rgba(0, 0, 0, 0.3), 0 2px 8px -1px rgba(0, 0, 0, 0.2)',
       },
       keyframes: {
         popIn: {
